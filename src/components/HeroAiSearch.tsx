@@ -24,6 +24,7 @@ import { SAMPLE_AI_PRESETS } from '../data/products';
 import { formatUzbekSum, formatPhoneNumber } from '../utils/formatters';
 import { sendTelegramNotification, formatAiInquiryTelegramMessage } from '../utils/telegram';
 import { triggerHaptic } from '../utils/telegramWebApp';
+import { safeFetchJson } from '../utils/apiClient';
 
 interface HeroAiSearchProps {
   onSearchResult: (result: AiAnalysisResult, matchedProducts: Product[]) => void;
@@ -203,48 +204,37 @@ function cleanAiErrorMessage(rawMsg?: string | null): string {
     try {
       setAnalysisStep(retryCount > 0 ? "AI model zaxira kanali orqali skanerlamoqda..." : "AI model rasm detallarini skanerlamoqda...");
 
-      let response: Response;
-      let resData: any;
-
-      try {
-        response = await fetch('/api/analyze-part', {
+      const apiRes = await safeFetchJson<{ success: boolean; data?: AiAnalysisResult; error?: string; details?: string }>(
+        '/api/analyze-part',
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...imagePayload,
             prompt: customPrompt.trim() || undefined,
           }),
-        });
-        resData = await response.json();
-      } catch (networkErr: any) {
-        // If network request failed on first try, wait 1s and retry once
-        if (retryCount === 0) {
+        }
+      );
+
+      // Check if server returned 503, 429 or high demand error or failed
+      if (!apiRes.ok || !apiRes.data?.success || !apiRes.data?.data) {
+        const errMsg = String(apiRes.data?.error || apiRes.data?.details || apiRes.error || '');
+        const isHighDemand = apiRes.status === 503 || apiRes.status === 429 ||
+          errMsg.includes('503') || errMsg.includes('429') || errMsg.includes('yuklama') || errMsg.includes('overload') || errMsg.includes('unavailable');
+
+        // Automatic retry once after 1 second if overloaded or network issue
+        if ((isHighDemand || !apiRes.ok) && retryCount === 0) {
           setAnalysisStep("AI server bilan qayta bog'lanilmoqda (1 soniya)...");
           await new Promise((r) => setTimeout(r, 1000));
           return analyzeImage(imagePayload, 1);
         }
-        throw networkErr;
-      }
 
-      // Check if server returned 503, 429 or high demand error
-      if (!response.ok || !resData.success) {
-        const errMsg = String(resData?.error || resData?.details || '');
-        const isHighDemand = response.status === 503 || response.status === 429 ||
-          errMsg.includes('503') || errMsg.includes('429') || errMsg.includes('yuklama') || errMsg.includes('overload') || errMsg.includes('unavailable');
-
-        // Automatic retry once after 1 second if overloaded
-        if (isHighDemand && retryCount === 0) {
-          setAnalysisStep("AI serverda yuklama yuqori, 1 soniyadan so'ng qayta urinilmoqda...");
-          await new Promise((r) => setTimeout(r, 1000));
-          return analyzeImage(imagePayload, 1);
-        }
-
-        throw new Error(cleanAiErrorMessage(errMsg));
+        throw new Error(cleanAiErrorMessage(errMsg || "Server bilan bog'lanishda xatolik yuz berdi."));
       }
 
       setAnalysisStep("Bozor terminlari, mos mashinalar va ombordagi zapchastlar aniqlanmoqda...");
 
-      const aiData: AiAnalysisResult = resData.data;
+      const aiData: AiAnalysisResult = apiRes.data.data;
       setResult(aiData);
 
       const matches = findMatchingProducts(aiData);

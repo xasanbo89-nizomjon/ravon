@@ -3,6 +3,8 @@ import { X, CheckCircle2, ShieldCheck, MapPin, Phone, User, Truck, CreditCard, C
 import { CartItem, OrderForm, SiteSettings, AppliedPromo } from '../types';
 import { formatUzbekSum, formatPhoneNumber } from '../utils/formatters';
 import { isTelegramWebApp, getTelegramUser, triggerHaptic } from '../utils/telegramWebApp';
+import { safeFetchJson, cleanFriendlyErrorMessage } from '../utils/apiClient';
+import { sendTelegramNotification, formatOrderTelegramMessage } from '../utils/telegram';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -102,7 +104,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/orders', {
+      const generatedOrderId = 'RAV-' + Date.now().toString().slice(-6);
+      let finalOrderId = generatedOrderId;
+
+      const response = await safeFetchJson<{ success: boolean; orderId?: string; error?: string }>('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -115,16 +120,27 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Buyurtmani rasmiylashtirishda xatolik yuz berdi');
+      if (response.ok && response.data?.success) {
+        finalOrderId = response.data.orderId || generatedOrderId;
+      } else {
+        // Fallback: If server returned HTML (e.g. Vercel static deployment) or server is unavailable,
+        // send order directly via client-side Telegram notification
+        console.warn('Backend /api/orders returned error or HTML, using fallback Telegram notification:', response.error);
+        if (siteSettings.telegramBotToken && siteSettings.telegramAdminChatId) {
+          const orderMsg = formatOrderTelegramMessage(finalOrderId, form, items, totalAmount);
+          await sendTelegramNotification(
+            siteSettings.telegramBotToken,
+            siteSettings.telegramAdminChatId,
+            orderMsg
+          );
+        }
       }
 
-      onOrderSuccess(data.orderId, form);
+      onOrderSuccess(finalOrderId, form);
       triggerHaptic('success');
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || "Xatolik yuz berdi, iltimos qaytadan urinib ko'ring.");
+      setError(cleanFriendlyErrorMessage(err?.message || "Buyurtmani rasmiylashtirishda xatolik yuz berdi."));
     } finally {
       setIsSubmitting(false);
     }

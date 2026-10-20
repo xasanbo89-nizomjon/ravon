@@ -59,6 +59,7 @@ import {
 } from '../../types';
 import { formatUzbekSum } from '../../utils/formatters';
 import { sendTelegramNotification } from '../../utils/telegram';
+import { safeFetchJson, cleanFriendlyErrorMessage } from '../../utils/apiClient';
 
 interface AdminDashboardModalProps {
   isOpen: boolean;
@@ -224,11 +225,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   // Fetch active Gemini status on modal open (Must be called unconditionally before any early returns)
   useEffect(() => {
     if (isOpen) {
-      fetch('/api/gemini/status')
-        .then(res => res.json())
-        .then(data => {
-          if (data?.maskedKey) {
-            setActiveGeminiMaskedKey(data.maskedKey);
+      safeFetchJson<{ maskedKey?: string }>('/api/gemini/status')
+        .then(res => {
+          if (res.ok && res.data?.maskedKey) {
+            setActiveGeminiMaskedKey(res.data.maskedKey);
           }
         })
         .catch(() => {});
@@ -286,24 +286,23 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     setIsTestingGemini(true);
     setGeminiTestStatus(null);
     try {
-      const res = await fetch('/api/gemini/test', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const res = await safeFetchJson<{ success: boolean; message?: string; error?: string }>('/api/gemini/test', { method: 'POST' });
+      if (res.ok && res.data?.success) {
         setGeminiTestStatus({
           success: true,
-          message: `✅ Gemini 3.8 Flash ulanishi muvaffaqiyatli! Server javobi: "${data.message}"`,
+          message: `✅ Gemini 3.8 Flash ulanishi muvaffaqiyatli! Server javobi: "${res.data.message}"`,
         });
         showToast("Gemini 3.8 Flash AI ulanishi muvaffaqiyatli!");
       } else {
         setGeminiTestStatus({
           success: false,
-          message: `❌ Xatolik: ${data.error || "Gemini API kaliti javob bermadi"}`,
+          message: `❌ Xatolik: ${res.data?.error || res.error || "Gemini API kaliti javob bermadi"}`,
         });
       }
     } catch (err: any) {
       setGeminiTestStatus({
         success: false,
-        message: `❌ Ulanish xatosi: ${err?.message || "Server bilan aloqa uzildi"}`,
+        message: `❌ Ulanish xatosi: ${cleanFriendlyErrorMessage(err?.message)}`,
       });
     } finally {
       setIsTestingGemini(false);
@@ -319,14 +318,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     }
     setIsUpdatingGeminiKey(true);
     try {
-      const res = await fetch('/api/gemini/update-key', {
+      const res = await safeFetchJson<{ success: boolean; maskedKey?: string; message?: string; error?: string }>('/api/gemini/update-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newKey: geminiApiKeyInput.trim() }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (data.maskedKey) setActiveGeminiMaskedKey(data.maskedKey);
+      if (res.ok && res.data?.success) {
+        if (res.data.maskedKey) setActiveGeminiMaskedKey(res.data.maskedKey);
         setGeminiApiKeyInput('');
         showToast("Gemini API kaliti yangilandi!");
         setGeminiTestStatus({
@@ -334,10 +332,10 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           message: "✅ Yangi kalit serverda o'rnatildi! Tekshirish uchun quyidagi test tugmasini bosing.",
         });
       } else {
-        showToast(data.error || "Kalitni yangilashda xatolik yuz berdi");
+        showToast(cleanFriendlyErrorMessage(res.data?.error || res.error || "Kalitni yangilashda xatolik yuz berdi"));
       }
     } catch (err: any) {
-      showToast(err?.message || "Server bilan bog'lanishda xatolik yuz berdi");
+      showToast(cleanFriendlyErrorMessage(err?.message || "Server bilan bog'lanishda xatolik yuz berdi"));
     } finally {
       setIsUpdatingGeminiKey(false);
     }
@@ -367,7 +365,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     setAiError(null);
 
     try {
-      const response = await fetch('/api/analyze-part', {
+      const response = await safeFetchJson<{ success: boolean; data?: AiAnalysisResult; error?: string }>('/api/analyze-part', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -376,12 +374,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "AI tahlilida xatolik yuz berdi");
+      if (!response.ok || !response.data?.success || !response.data?.data) {
+        throw new Error(cleanFriendlyErrorMessage(response.data?.error || response.error || "AI tahlilida xatolik yuz berdi"));
       }
 
-      const res: AiAnalysisResult = data.data;
+      const res: AiAnalysisResult = response.data.data;
 
       let estPrice = 500000;
       if (res.estimatedPriceRange) {

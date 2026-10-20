@@ -1,5 +1,6 @@
 import { CartItem, OrderForm, AiAnalysisResult } from '../types';
 import { formatUzbekSum } from './formatters';
+import { safeFetchJson, cleanFriendlyErrorMessage } from './apiClient';
 
 export async function sendTelegramNotification(
   token: string,
@@ -13,7 +14,7 @@ export async function sendTelegramNotification(
 
   try {
     // 1. Try internal backend proxy first
-    const res = await fetch('/api/telegram/send', {
+    const res = await safeFetchJson<{ success: boolean; error?: string }>('/api/telegram/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -24,31 +25,37 @@ export async function sendTelegramNotification(
       }),
     });
 
-    const data = await res.json();
-    if (res.ok && data.success) {
+    if (res.ok && res.data?.success) {
       return { success: true };
     }
 
-    // 2. Direct fallback to Telegram API in case backend fails
-    const directRes = await fetch(`https://api.telegram.org/bot${token.trim()}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId.trim(),
-        text,
-        parse_mode: parseMode,
-      }),
-    });
+    // 2. Direct fallback to Telegram API in case backend fails (e.g. 404 on Vercel)
+    const directRes = await safeFetchJson<{ ok: boolean; description?: string }>(
+      `https://api.telegram.org/bot${token.trim()}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId.trim(),
+          text,
+          parse_mode: parseMode,
+        }),
+      }
+    );
 
-    const directData = await directRes.json();
-    if (directData.ok) {
+    if (directRes.ok && directRes.data?.ok) {
       return { success: true };
     } else {
-      return { success: false, error: directData.description || data.error || 'Telegram xatosi' };
+      return {
+        success: false,
+        error: cleanFriendlyErrorMessage(
+          directRes.data?.description || res.error || 'Telegram bilan bog‘lanishda xatolik'
+        ),
+      };
     }
   } catch (err: any) {
-    console.error('Telegram notification error:', err);
-    return { success: false, error: err?.message || 'Internet yoki Telegram bilan bog‘lanishda xatolik' };
+    console.warn('Telegram notification error:', err);
+    return { success: false, error: cleanFriendlyErrorMessage(err?.message) };
   }
 }
 
