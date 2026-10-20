@@ -42,7 +42,9 @@ import {
   Coins,
   Calendar,
   Hash,
-  Copy
+  Copy,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { 
   Product, 
@@ -108,6 +110,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
   const [activeTab, setActiveTab] = useState<'crm' | 'settings' | 'ai-add' | 'products' | 'banner' | 'admins' | 'promocodes'>('crm');
   const [toast, setToast] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(true);
 
   // TAB 1: Site Settings Form State
   const [tempSettings, setTempSettings] = useState<SiteSettings>(siteSettings);
@@ -646,9 +649,9 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const newOrdersCount = orders.filter(o => o.status === 'Yangi').length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-md overflow-hidden animate-in fade-in duration-200">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2 sm:p-3'} bg-black/95 backdrop-blur-md overflow-hidden animate-in fade-in duration-200`}>
       <div 
-        className="w-full max-w-6xl h-[92vh] bg-[#0c0e14] border border-red-600/60 rounded-3xl shadow-2xl flex flex-col overflow-hidden relative"
+        className={`w-full ${isFullscreen ? 'h-full rounded-none border-0' : 'max-w-[98vw] h-[97vh] rounded-2xl sm:rounded-3xl border border-red-600/60 shadow-2xl'} bg-[#0c0e14] flex flex-col overflow-hidden relative`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toast Alert */}
@@ -676,7 +679,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     BOSH SUPERADMIN
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 text-[10px] font-bold">
+                  <span className="px-2.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 text-[10px] font-bold">
                     {currentUser.role === 'full_admin' ? 'Katta Admin' : 'Menejer'}
                   </span>
                 )}
@@ -688,6 +691,19 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 text-xs font-semibold flex items-center gap-1.5 transition"
+              title={isFullscreen ? "Oyna rejimiga o'tish" : "To'liq ekranga yoyish (Full-screen)"}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span className="hidden sm:inline">{isFullscreen ? 'Kichraytirish' : 'To‘liq ekran'}</span>
+            </button>
             <button
               onClick={onLogout}
               className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 text-xs font-semibold flex items-center gap-1.5 transition"
@@ -822,7 +838,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           
           {/* TAB: ADMINLARNI BOSHQARISH (FAQAT SUPERADMIN axiy3735@gmail.com UCHUN) */}
           {activeTab === 'admins' && isSuperadmin && (
-            <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-200">
+            <div className="w-full space-y-6 animate-in fade-in duration-200">
               
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
                 <div>
@@ -1066,7 +1082,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
           {/* TAB 1: SAYT SOZLAMALARI VA ALOQA */}
           {activeTab === 'settings' && !isManager && (
-            <form onSubmit={handleSaveSettings} className="max-w-4xl mx-auto space-y-6">
+            <form onSubmit={handleSaveSettings} className="w-full space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
                 <div>
                   <h3 className="text-lg font-racing font-bold text-white">
@@ -1583,7 +1599,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
           {/* TAB 2: AI ORQALI YANGI ZAPCHAST QO'SHISH */}
           {activeTab === 'ai-add' && (
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="w-full space-y-6">
               <div className="border-b border-zinc-800 pb-3">
                 <h3 className="text-lg font-racing font-bold text-white flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-red-500 animate-pulse" />
@@ -1994,13 +2010,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                               className="w-12 h-12 rounded-lg object-cover border border-zinc-700 bg-black"
                             />
                           </td>
-                          <td className="p-3 max-w-[220px]">
-                            <div className="font-bold text-white truncate">{prod.name}</div>
+                          <td className="p-3 min-w-[200px] max-w-[420px]">
+                            <div className="font-bold text-white">{prod.name}</div>
                             <div className="text-[11px] text-red-400 font-bold">"{prod.bazaarName}"</div>
                           </td>
                           <td className="p-3 text-zinc-300">{prod.category}</td>
                           <td className="p-3">
-                            <div className="flex flex-wrap gap-1 max-w-[160px]">
+                            <div className="flex flex-wrap gap-1 max-w-[260px]">
                               {prod.carModels.slice(0, 2).map(c => (
                                 <span key={c} className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-300">
                                   {c}
@@ -2147,7 +2163,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
           {/* TAB 4: AKSIYA VA E'LONLAR BANNERI */}
           {activeTab === 'banner' && !isManager && (
-            <form onSubmit={handleSaveBanner} className="max-w-3xl mx-auto space-y-6">
+            <form onSubmit={handleSaveBanner} className="w-full space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
                 <div>
                   <h3 className="text-lg font-racing font-bold text-white flex items-center gap-2">
@@ -2636,7 +2652,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   }
 
                   return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
                       {filtered.map((promo) => {
                         const isExpired = promo.expiresAt && new Date(promo.expiresAt).getTime() < Date.now();
 
