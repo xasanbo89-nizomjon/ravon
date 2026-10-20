@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#08090d" />
+    <!-- Telegram Web App script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <title>Ravon Auto Tuning - Avto ehtiyot qismlari va tyuning</title>
+    <meta name="description" content="O'zbekistondagi avtomobillar (Gentra, Cobalt, Nexia 3, Spark va boshqalar) uchun tyuning va ehtiyot qismlar do'koni. AI rasm orqali zapchast qidiruv tizimi." />
+    <meta property="og:title" content="Ravon Auto Tuning - Avto ehtiyot qismlari va tyuning" />
+    <meta property="og:description" content="O'zbekistondagi avtomobillar (Gentra, Cobalt, Nexia 3, Spark va boshqalar) uchun tyuning va ehtiyot qismlar do'koni. AI rasm orqali zapchast qidiruv tizimi." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,600;0,700;1,700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Yashirin Admin Panel va Xavfsizlik Skripti (Ctrl + Shift + 7, Alt + A, 3 marta tez bosish yoki 2 soniya Long-Press) -->
+    <script>
+      (function() {
+        function isSessionRemembered() {
+          try {
+            return sessionStorage.getItem('ravon_admin_authorized') === 'true' || 
+                   sessionStorage.getItem('ravon_admin_logged') === 'true';
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function triggerAdminSecretAccess() {
+          // 1. Agar joriy sessiyada parol ("0606") allaqachon to'g'ri kiritilgan bo'lsa,
+          // to'g'ridan-to'g'ri admin panelni ochish
+          if (isSessionRemembered()) {
+            window.dispatchEvent(new CustomEvent('open-ravon-admin', { detail: { code: '0606' } }));
+            if (typeof window.__openRavonAdminPanel === 'function') {
+              window.__openRavonAdminPanel();
+            }
+            return;
+          }
+
+          // 2. Parol so'rovchi chiroyli React Modal oynasini ochish (brauzer prompt umuman ishlatilmaydi)
+          window.dispatchEvent(new CustomEvent('open-ravon-pin-modal'));
+          if (typeof window.__openSecretPinModal === 'function') {
+            window.__openSecretPinModal();
+          }
+        }
+
+        // Global hotkey listener: Alt + A YOKI Ctrl + Shift + 7
+        function handleGlobalKeyDown(event) {
+          // 1. Alt + A (yoki Alt + a)
+          if (event.altKey && (event.key === 'a' || event.key === 'A' || event.code === 'KeyA')) {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopPropagation) event.stopPropagation();
+            triggerAdminSecretAccess();
+            return;
+          }
+
+          // 2. Ctrl + Shift + 7 (yoki Cmd + Shift + 7) - Faqat SHIFT bilan birga!
+          var isCtrlOrMeta = event.ctrlKey || event.metaKey;
+          var isShift = event.shiftKey;
+          var isKey7 = (
+            event.key === '7' || 
+            event.key === '&' || 
+            event.code === 'Digit7' || 
+            event.code === 'Numpad7' || 
+            event.keyCode === 55 || 
+            event.which === 55
+          );
+
+          if (isCtrlOrMeta && isShift && isKey7) {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopPropagation) event.stopPropagation();
+            triggerAdminSecretAccess();
+            return;
+          }
+        }
+
+        window.addEventListener('keydown', handleGlobalKeyDown, true);
+        document.addEventListener('keydown', handleGlobalKeyDown, true);
+
+        // Faqat aniq telefon raqami yoki logotip bosilganda (data-phone-admin yoki data-logo-admin)
+        function isStrictSecretTarget(el) {
+          if (!el) return false;
+          return !!(el.closest && (el.closest('[data-phone-admin="true"]') || el.closest('[data-logo-admin="true"]')));
+        }
+
+        // Ketma-ket 3 marta tez bosish (Triple Click / Tap) faqat logotip yoki telefon uchun
+        var clickCount = 0;
+        var lastClickTime = 0;
+
+        document.addEventListener('click', function(e) {
+          if (!isStrictSecretTarget(e.target)) {
+            clickCount = 0;
+            return;
+          }
+          var now = Date.now();
+          if (now - lastClickTime < 600) {
+            clickCount++;
+          } else {
+            clickCount = 1;
+          }
+          lastClickTime = now;
+
+          if (clickCount >= 3) {
+            clickCount = 0;
+            if (navigator.vibrate) {
+              try { navigator.vibrate([60, 40, 60]); } catch (err) {}
+            }
+            triggerAdminSecretAccess();
+          }
+        }, true);
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
