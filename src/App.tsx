@@ -50,7 +50,27 @@ export default function App() {
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
     try {
       const saved = localStorage.getItem('ravon_site_settings');
-      return saved ? JSON.parse(saved) : DEFAULT_SITE_SETTINGS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          !parsed.phonePrimary || 
+          parsed.phonePrimary.includes('463-37-36') || 
+          parsed.telegramUsername === 'RavonAutoTuningUz'
+        ) {
+          const updated = {
+            ...DEFAULT_SITE_SETTINGS,
+            ...parsed,
+            phonePrimary: '+998 97 524 04 01',
+            telegramUsername: 'Doliyev_dilshod',
+            telegramChannel: 'https://t.me/Doliyev_dilshod',
+            whatsappUrl: 'https://wa.me/998975240401',
+          };
+          localStorage.setItem('ravon_site_settings', JSON.stringify(updated));
+          return updated;
+        }
+        return { ...DEFAULT_SITE_SETTINGS, ...parsed };
+      }
+      return DEFAULT_SITE_SETTINGS;
     } catch {
       return DEFAULT_SITE_SETTINGS;
     }

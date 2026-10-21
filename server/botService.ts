@@ -10,6 +10,60 @@ export interface BotServiceOptions {
 let isPollingActive = false;
 let pollingAbortController: AbortController | null = null;
 let lastProcessedUpdateId = 0;
+export let activeAdminChatId: string | null = null;
+
+export const ADMIN_USERNAME = 'Doliyev_dilshod';
+export const ADMIN_PHONE = '+998 97 524 04 01';
+
+export function getCleanAppUrl(customUrl?: string): string {
+  const envUrl = customUrl || process.env.APP_URL || process.env.VERCEL_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 5) {
+    let url = envUrl.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+    if (url.startsWith('http://')) {
+      url = url.replace('http://', 'https://');
+    }
+    return url.replace(/\/+$/, '');
+  }
+  return 'https://ais-pre-ej5a2rtqfnecjfmxaluobw-211039395967.asia-southeast1.run.app';
+}
+
+/**
+ * Set Telegram Chat Menu Button (Persistent "Do'konni ochish" Mini App button at the bottom of the chat)
+ */
+export async function setTelegramChatMenuButton(
+  token: string,
+  chatId?: string | number,
+  webAppUrl?: string
+) {
+  try {
+    const url = getCleanAppUrl(webAppUrl);
+    const body: any = {
+      menu_button: {
+        type: 'web_app',
+        text: "Do'konni ochish",
+        web_app: {
+          url,
+        },
+      },
+    };
+    if (chatId) {
+      body.chat_id = chatId;
+    }
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn('[BotService] setChatMenuButton error:', err);
+    return null;
+  }
+}
 
 export function escapeHtml(text: string): string {
   if (!text) return '';
@@ -258,51 +312,56 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           }
         );
       } else if (data === 'contact_info') {
+        const cleanAppUrl = getCleanAppUrl(appUrl);
         await sendTelegramMessage(
           botToken,
           chatId,
           `📞 <b>"Ravon Auto Tuning" Aloqa Ma'lumotlari:</b>\n\n` +
-          `🏢 <b>Do'kon manzili:</b> Toshkent sh., Sergeli tumani, Avtomobil ehtiyot qismlari bozori (Sergeli moshina bozori), 4-blok, 28-do'kon.\n` +
-          `📱 <b>Telefonlar:</b> +998 (90) 123-45-67 | +998 (97) 765-43-21\n` +
-          `💬 <b>Menejer:</b> @RavonAutoTuningUz\n` +
-          `⏰ <b>Ish tartibi:</b> Har kuni 08:00 dan 20:00 gacha (dam olish kunisiz)`,
+          `🏢 <b>Do'kon manzili:</b> Toshkent sh., Sergeli mashina bozori, 4-blok, 18-do'kon (Ravon Tuning).\n` +
+          `📱 <b>Telefon / SMS:</b> ${ADMIN_PHONE}\n` +
+          `💬 <b>Menejer Telegram:</b> @${ADMIN_USERNAME}\n` +
+          `⏰ <b>Ish tartibi:</b> Har kuni 08:30 dan 20:00 gacha (dam olish kunisiz)`,
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "💬 Menejerga yozish", url: "https://t.me/RavonAutoTuningUz" }],
-                [{ text: "🚀 Do'konni Ochish (Mini App)", web_app: { url: appUrl } }]
+                [{ text: `💬 Menejerga yozish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }],
+                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }]
               ]
             }
           }
         );
       } else if (data === 'location_info') {
+        const cleanAppUrl = getCleanAppUrl(appUrl);
         await sendTelegramMessage(
           botToken,
           chatId,
           `📍 <b>Bizning Joylashuvimiz:</b>\n\n` +
-          `Toshkent shahri, Sergeli mashina bozori, asosiy avto ehtiyot qismlari qatori, 4-blok, 28-do'kon (Ravon Tuning).\n` +
-          `🚗 Mo'ljal: Sergeli avtosaloni ro'parasidagi bozor kirish darvozasi.`,
+          `Toshkent shahri, Sergeli mashina bozori, asosiy avto ehtiyot qismlari qatori, 4-blok, 18-do'kon (Ravon Tuning).\n` +
+          `🚗 Mo'ljal: Sergeli avtosaloni ro'parasidagi bozor kirish darvozasi.\n` +
+          `📞 Bog'lanish: ${ADMIN_PHONE} (@${ADMIN_USERNAME})`,
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "🚀 Do'konga kirish (Mini App)", web_app: { url: appUrl } }]
+                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }]
               ]
             }
           }
         );
       } else if (data === 'delivery_info') {
+        const cleanAppUrl = getCleanAppUrl(appUrl);
         await sendTelegramMessage(
           botToken,
           chatId,
           `🚚 <b>Yetkazib Berish Shartlari:</b>\n\n` +
-          `🚗 <b>Toshkent shahri bo'ylab:</b> Tezkor Yandex / Express kuryer orqali 2-3 soatda yetkaziladi.\n` +
+          `🚗 <b>Toshkent shahri bo'ylab:</b> Tezkor Yandex / Express kuryer orqali 2-3 soatda eshikkacha yetkaziladi.\n` +
           `📦 <b>O'zbekiston viloyatlari bo'ylab:</b> BTS Pochta yoki Fargo xizmatlari orqali 24 soat ichida yetkaziladi.\n` +
           `🏢 <b>Olib ketish (Samovivoz):</b> Sergeli moshina bozoridagi do'konimizdan bepul olib ketishingiz mumkin.\n` +
-          `💳 <b>To'lov:</b> Click, Payme yoki tovar qo'lga yetganda naqd pul.`,
+          `💳 <b>To'lov:</b> Click, Payme yoki tovar qo'lga yetganda naqd pul.\n` +
+          `📞 Ma'lumot uchun: ${ADMIN_PHONE} (@${ADMIN_USERNAME})`,
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "🚀 Mahsulotlarni Ko'rish", web_app: { url: appUrl } }]
+                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }]
               ]
             }
           }
@@ -320,26 +379,48 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
 
   const customerName = [message.from?.first_name, message.from?.last_name].filter(Boolean).join(' ') || 'Hurmatli mijoz';
   const username = message.from?.username || '';
+  const isDoliyevDilshod = username.toLowerCase() === ADMIN_USERNAME.toLowerCase();
+
+  // If message is from admin @Doliyev_dilshod, register his chatId as active admin
+  if (isDoliyevDilshod) {
+    activeAdminChatId = String(chatId);
+    console.log(`[BotService] Bosh Admin @${ADMIN_USERNAME} ulandi! Chat ID: ${chatId}`);
+  }
 
   // 2. Handle /start command or greeting text
   if (message.text && (message.text.startsWith('/start') || message.text.startsWith('/help') || message.text.toLowerCase() === 'salom')) {
-    const welcomeHtml = 
-      `👋 <b>Assalomu alaykum, ${escapeHtml(customerName)}!</b>\n\n` +
-      `🚗 <b>"Ravon Auto Tuning"</b> rasmiy Telegram do'koni va AI yordamchisiga xush kelibsiz!\n\n` +
-      `Bizda GM avtomobillari (<b>Gentra, Cobalt, Nexia 3, Damas, Spark, Malibu, Tracker</b>) uchun eng sifatli ehtiyot qismlar va tyuning detallari mavjud.\n\n` +
-      `✨ <b>Asosiy Imkoniyatlar:</b>\n` +
-      `📸 <b>AI Zapchast qidiruv:</b> Botga istalgan zapchast yoki detal rasmini yuboring — Gemini 3.8 Flash AI uni soniyalar ichida aniqlab, nomini va narxini aytadi!\n` +
-      `📱 <b>Telegram Mini App:</b> Telegram'dan chiqmasdan to'liq internet-do'kondan foydalaning va buyurtma bering.\n` +
-      `🚚 <b>O'zbekiston bo'ylab:</b> 24 soat ichida eshikkacha yetkazib berish!\n\n` +
-      `<i>Quyidagi tugmalar orqali do'konga kiring yoki detal rasmini yuboring:</i>`;
+    const cleanAppUrl = getCleanAppUrl(appUrl);
+
+    // Set Menu Button for this chat so the persistent "Do'konni ochish" button is activated
+    setTelegramChatMenuButton(botToken, chatId, cleanAppUrl).catch(() => {});
+
+    const welcomeHtml = isDoliyevDilshod
+      ? `👑 <b>Assalomu alaykum, Dilshod aka (@${ADMIN_USERNAME})!</b>\n\n` +
+        `🚗 <b>"Ravon Auto Tuning"</b> tizimiga Bosh Admin sifatida xush kelibsiz!\n` +
+        `✅ Ushbu chat botga muvaffaqiyatli bog'landi (Chat ID: <code>${chatId}</code>).\n` +
+        `📦 Saytdan tushgan yangi buyurtmalar va so'rovlar to'g'ridan-to'g'ri ushbu chatga keladi.\n\n` +
+        `<i>Do'konni Mini App sifatida ochish uchun quyidagi tugmani bosing:</i>`
+      : `👋 <b>Assalomu alaykum, ${escapeHtml(customerName)}!</b>\n\n` +
+        `🚗 <b>"Ravon Auto Tuning"</b> rasmiy internet do'koni va AI yordamchisiga xush kelibsiz!\n\n` +
+        `Bizda GM avtomobillari (<b>Gentra, Cobalt, Nexia 3, Damas, Spark, Malibu 1/2, Tracker, Onix</b>) uchun eng sara ehtiyot qismlar, tyuning optikalari va salon detallari mavjud.\n\n` +
+        `✨ <b>Asosiy Imkoniyatlar:</b>\n` +
+        `🛍 <b>Telegram Mini App:</b> Telegram'dan chiqmasdan to'liq katalogdan foydalaning va buyurtma bering.\n` +
+        `📸 <b>AI Zapchast qidiruv:</b> Botga istalgan detal rasmini yuboring — sun'iy intellekt uni 2 soniyada aniqlaydi!\n` +
+        `🚚 <b>O'zbekiston bo'ylab:</b> 24 soat ichida eshikkacha tezkor yetkazib berish!\n\n` +
+        `<i>Do'konimizni ochish uchun quyidagi "Do'konni ochish" tugmasini bosing:</i>`;
 
     await sendTelegramMessage(botToken, chatId, welcomeHtml, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🚀 Internet Do'konni Ochish (Mini App)", web_app: { url: appUrl } }],
           [
-            { text: "📸 Rasm orqali qidirish", callback_data: "how_to_search" },
-            { text: "📞 Bog'lanish", callback_data: "contact_info" }
+            { text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }
+          ],
+          [
+            { text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }
+          ],
+          [
+            { text: "📸 Rasm orqali qidirish (AI)", callback_data: "how_to_search" },
+            { text: `📞 Bog'lanish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }
           ],
           [
             { text: "📍 Bizning manzil", callback_data: "location_info" },
@@ -456,8 +537,8 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
         reply_markup: {
           inline_keyboard: [
             [{ text: `🔍 "${message.text.slice(0, 20)}" ni Do'konda Ko'rish`, web_app: { url: searchUrl } }],
-            [{ text: "🚀 Asosiy Do'kon (Mini App)", web_app: { url: appUrl } }],
-            [{ text: "💬 Menejer bilan bog'lanish", url: "https://t.me/RavonAutoTuningUz" }]
+            [{ text: "🛍 Do'konni ochish", web_app: { url: getCleanAppUrl(appUrl) } }],
+            [{ text: `💬 Menejer bilan bog'lanish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }]
           ]
         }
       }
@@ -478,6 +559,11 @@ export function startTelegramBotPolling(options: BotServiceOptions) {
   pollingAbortController = new AbortController();
 
   console.log('[BotService] Telegram bot long-polling started...');
+
+  // Set default persistent Mini App button ("Do'konni ochish") globally for all users
+  setTelegramChatMenuButton(options.botToken, undefined, options.appUrl).catch((err) => {
+    console.warn('[BotService] Initial setChatMenuButton error:', err);
+  });
 
   (async () => {
     while (isPollingActive) {
@@ -545,6 +631,8 @@ export async function dispatchOrderTelegramNotification(params: {
   totalAmount: number;
   botToken: string;
   adminChatId: string;
+  adminUsername?: string;
+  adminPhone?: string;
   promoCodeUsed?: string;
   discountAmount?: number;
 }) {
@@ -599,9 +687,15 @@ export async function dispatchOrderTelegramNotification(params: {
       `💰 <b>JAMI TO‘LOV SUMMASI:</b> <b>${formatUzbekSum(totalAmount)}</b>\n` +
       `⏰ <b>Qabul qilingan vaqt:</b> ${new Date().toLocaleString('uz-UZ')}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
+      `👨‍💼 <b>Mas'ul Admin:</b> @${ADMIN_USERNAME} (Tel: ${ADMIN_PHONE})\n` +
       `✅ <i>Xaridorga shaxsiy xarid cheki taqdim etildi. Darhol bog‘lanish tavsiya etiladi.</i>`;
 
     await sendTelegramMessage(botToken, adminChatId, adminMessage);
+
+    // If activeAdminChatId from @Doliyev_dilshod was captured and differs from adminChatId, send to him as well
+    if (activeAdminChatId && activeAdminChatId !== adminChatId) {
+      await sendTelegramMessage(botToken, activeAdminChatId, adminMessage);
+    }
   }
 
   // 2. XARIDORGA FAQAT O'ZINING BUYURTMASI CHEKI (Customer only receives their personal receipt)
@@ -626,10 +720,12 @@ export async function dispatchOrderTelegramNotification(params: {
       `🔒 <i>Xavfsizlik kafolati: Ushbu chek faqat sizning shaxsiy xaridingiz uchun taqdim etildi. Shaxsiy ma'lumotlaringiz maxfiy saqlanadi va boshqa foydalanuvchilarga ko'rsatilmaydi.</i>\n\n` +
       `🚗 <i>Menejerimiz yaqin daqiqalarda siz bilan aloqaga chiqadi. Xaridingiz uchun tashakkur!</i>`;
 
+    const cleanAppUrl = getCleanAppUrl();
     await sendTelegramMessage(botToken, order.telegramUserId, customerReceipt, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "💬 Menejer bilan bog'lanish", url: "https://t.me/RavonAutoTuningUz" }]
+          [{ text: `💬 Menejer bilan bog'lanish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }],
+          [{ text: "🛍 Do'konni qayta ochish", web_app: { url: cleanAppUrl } }]
         ]
       }
     });

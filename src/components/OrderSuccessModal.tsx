@@ -245,7 +245,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
           </button>
 
           <a
-            href="https://t.me/RavonAutoTuningUz"
+            href="https://t.me/Doliyev_dilshod"
             target="_blank"
             rel="noreferrer"
             className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-racing text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition active:scale-95"

@@ -18,7 +18,13 @@ export async function safeFetchJson<T = any>(
   init?: RequestInit
 ): Promise<SafeApiResponse<T>> {
   try {
-    const response = await fetch(input, init);
+    let resolvedInput = input;
+    const customBase = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL ? String(import.meta.env.VITE_API_URL) : '').trim().replace(/\/+$/, '');
+    if (typeof input === 'string' && input.startsWith('/api/') && customBase) {
+      resolvedInput = `${customBase}${input}`;
+    }
+
+    const response = await fetch(resolvedInput, init);
     const contentType = response.headers.get('content-type') || '';
     const isJsonHeader = contentType.toLowerCase().includes('application/json');
 

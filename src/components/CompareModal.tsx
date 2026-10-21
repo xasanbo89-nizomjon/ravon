@@ -98,7 +98,7 @@ export const CompareModal: React.FC<CompareModalProps> = ({
         text += `📊 Narx bo‘yicha xulosa: Har ikkala detal bir xil narxda.\n`;
       }
     }
-    text += `━━━━━━━━━━━━━━━━━━━━\nBatafsil do'konimizda: https://t.me/RavonAutoTuningUz`;
+    text += `━━━━━━━━━━━━━━━━━━━━\nBatafsil do'konimizda: https://t.me/Doliyev_dilshod`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);
