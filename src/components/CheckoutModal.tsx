@@ -17,12 +17,12 @@ interface CheckoutModalProps {
 }
 
 const REGIONS = [
+  'Namangan viloyati',
+  'Andijon viloyati',
+  'Farg‘ona viloyati',
   'Toshkent shahri',
   'Toshkent viloyati',
   'Samarqand viloyati',
-  'Farg‘ona viloyati',
-  'Andijon viloyati',
-  'Namangan viloyati',
   'Buxoro viloyati',
   'Qashqadaryo viloyati',
   'Surxondaryo viloyati',
@@ -46,7 +46,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [form, setForm] = useState<OrderForm>({
     fullName: '',
     phone: '+998 ',
-    region: 'Toshkent shahri',
+    region: 'Namangan viloyati',
     cityAddress: '',
     deliveryMethod: 'courier',
     paymentMethod: 'click',
@@ -270,7 +270,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   required
                   value={form.cityAddress}
                   onChange={(e) => setForm({ ...form, cityAddress: e.target.value })}
-                  placeholder="Masalan: Chilonzor 9-mavze, 14-uy"
+                  placeholder="Masalan: Uychi tumani, Mustaqillik ko'chasi, 15-uy"
                   className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500"
                 />
               </div>
@@ -285,7 +285,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 {[
                   { id: 'courier', title: 'Kuryer orqali', desc: 'Eshikkacha tezkor', icon: Truck },
                   { id: 'post', title: 'BTS / Fargo', desc: 'Pochta bo‘limiga', icon: Clock },
-                  { id: 'pickup', title: 'Olib ketish', desc: 'Sergeli bozoridan', icon: MapPin },
+                  { id: 'pickup', title: 'Olib ketish', desc: 'Namangan vil., Uychi tumani', icon: MapPin },
                 ].map((item) => {
                   const isSel = form.deliveryMethod === item.id;
                   const Icon = item.icon;

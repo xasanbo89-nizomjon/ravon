@@ -5,7 +5,8 @@ import {
   handleTelegramUpdate, 
   dispatchOrderTelegramNotification, 
   getBotServiceStatus,
-  getCleanAppUrl
+  getCleanAppUrl,
+  sendToAllAdmins
 } from './botService.js';
 
 dotenv.config({ override: true });
@@ -292,7 +293,7 @@ app.post(['/api/analyze-part', '/analyze-part'], async (req, res) => {
       return res.status(400).json({ error: 'Rasm yuborilmadi (imageBase64 yoki imageUrl kiritilishi shart)' });
     }
 
-    const systemInstruction = `Siz O'zbekistondagi eng tajribali avtomobil ehtiyot qismlari va tyuning ustalari (Sergeli moshina bozori va Farhod bozori mutaxassisi)siz.
+    const systemInstruction = `Siz O'zbekistondagi eng tajribali avtomobil ehtiyot qismlari va tyuning ustalari (Namangan viloyati, Uychi tumani "Ravon Auto Tuning" markazi mutaxassisi)siz.
 Foydalanuvchi taqdim etgan avtozapchast yoki tyuning detalining rasmini tahlil qiling.
 O'zbekistondagi mashhur avtomobillar (Gentra, Cobalt, Nexia 3, Spark, Malibu 1/2, Tracker, Onix, Damas, Labo) va bozor terminlarini yaxshi bilasiz:
 Masalan:
@@ -415,38 +416,35 @@ app.post(['/api/orders', '/orders'], async (req, res) => {
     orderId,
     message: "Buyurtmangiz muvaffaqiyatli qabul qilindi! Menejerimiz tez orada siz bilan bog'lanadi.",
     adminContact: {
-      username: `@${DEFAULT_ADMIN_USERNAME}`,
+      username: '@Doliyev_dilshod / @Sherzodjanovich_7',
       phone: DEFAULT_ADMIN_PHONE,
     },
     createdAt: new Date().toISOString(),
   });
 });
 
-// 6. Telegram send proxy
+// 6. Telegram send proxy (forwards to both @Doliyev_dilshod and @Sherzodjanovich_7 + adminChatId)
 app.post(['/api/telegram/send', '/telegram/send'], async (req, res) => {
   try {
     const { token, chatId, text, parseMode } = req.body;
-    if (!token || !chatId || !text) {
-      return res.status(400).json({ success: false, error: 'Token, chatId va text kiritilishi shart' });
+    const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TELEGRAM_BOT_TOKEN;
+    const primaryChatId = chatId || process.env.TELEGRAM_ADMIN_CHAT_ID || DEFAULT_TELEGRAM_ADMIN_CHAT_ID;
+
+    if (!activeToken || !text) {
+      return res.status(400).json({ success: false, error: 'Token va xabar matni kiritilishi shart' });
     }
 
-    const tgUrl = `https://api.telegram.org/bot${token}/sendMessage`;
-    const tgRes = await fetch(tgUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: parseMode || 'HTML',
-      }),
+    const results = await sendToAllAdmins(activeToken, String(primaryChatId), text, {
+      parse_mode: parseMode || 'HTML',
     });
 
-    const tgData = await tgRes.json();
-    if (!tgData.ok) {
-      return res.status(400).json({ success: false, error: tgData.description || 'Telegram xabari yuborilmadi' });
+    const anySuccess = results.some((r: any) => r && r.ok);
+    if (!anySuccess && results.length > 0) {
+      const firstErr = results[0]?.description || 'Telegram xabari yuborilmadi';
+      return res.status(400).json({ success: false, error: firstErr });
     }
 
-    return res.json({ success: true, result: tgData.result });
+    return res.json({ success: true, result: results[0]?.result || true });
   } catch (err: any) {
     console.error('Telegram send error:', err);
     return res.status(500).json({ success: false, error: err?.message || 'Server xatosi' });
@@ -501,7 +499,39 @@ app.get(['/api/telegram/bot-status', '/telegram/bot-status'], async (req, res) =
   }
 });
 
-// 9. Health check
+// 9. Real-time Cross-Device Sync Store (Phone <-> Computer synchronization)
+let sharedRealtimeState: Record<string, any> = {
+  updatedAt: 0,
+};
+
+app.get(['/api/sync/state', '/sync/state'], (req, res) => {
+  return res.json({
+    success: true,
+    state: sharedRealtimeState.updatedAt > 0 ? sharedRealtimeState : null,
+  });
+});
+
+app.post(['/api/sync/state', '/sync/state'], (req, res) => {
+  try {
+    const incoming = req.body || {};
+    sharedRealtimeState = {
+      ...sharedRealtimeState,
+      ...incoming,
+      updatedAt: incoming.updatedAt || Date.now(),
+    };
+    return res.json({
+      success: true,
+      updatedAt: sharedRealtimeState.updatedAt,
+    });
+  } catch {
+    return res.json({
+      success: false,
+      message: "Ma'lumotlarni sinxronlashda vaqtinchalik uzilish.",
+    });
+  }
+});
+
+// 10. Health check
 app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
@@ -511,6 +541,14 @@ app.get(['/api/health', '/health'], (req, res) => {
     },
     appUrl: getCleanAppUrl(),
     time: new Date().toISOString(),
+  });
+});
+
+// 11. Catch-all for any unmatched /api/* route so raw 404 HTML is never returned
+app.use('/api', (req, res) => {
+  res.status(200).json({
+    success: false,
+    error: "Xizmat bilan bog'lanishda vaqtinchalik uzilish yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.",
   });
 });
 

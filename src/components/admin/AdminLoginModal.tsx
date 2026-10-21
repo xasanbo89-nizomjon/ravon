@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Lock, X, ShieldAlert, Mail, KeyRound, ArrowRight, Eye, EyeOff, ShieldCheck, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, X, ShieldAlert, User, KeyRound, ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { AdminUser } from '../../types';
+import { triggerHaptic } from '../../utils/telegramWebApp';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -9,16 +10,27 @@ interface AdminLoginModalProps {
   onLoginSuccess: (user: AdminUser) => void;
 }
 
+const REQUIRED_ADMIN_LOGIN = 'sherzodjanovich_7';
+const REQUIRED_ADMIN_PASS = 'xasan.95';
+
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   onClose,
-  admins,
   onLoginSuccess,
 }) => {
-  const [email, setEmail] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLogin('');
+      setPassword('');
+      setShowPassword(false);
+      setError(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -26,60 +38,51 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = password.trim();
+    const enteredLogin = login.trim();
+    const enteredPass = password.trim();
 
-    if (!cleanEmail || !cleanPass) {
-      setError("Iltimos, email va parolni kiriting.");
+    if (!enteredLogin || !enteredPass) {
+      setError('Iltimos, login va parolni to‘liq kiriting.');
+      triggerHaptic('error');
       return;
     }
 
-    const foundAdmin = admins.find(a => a.email.toLowerCase() === cleanEmail);
+    // Strictly allow ONLY login = sherzodjanovich_7 and password = xasan.95
+    if (enteredLogin === REQUIRED_ADMIN_LOGIN && enteredPass === REQUIRED_ADMIN_PASS) {
+      triggerHaptic('success');
+      const verifiedSuperAdmin: AdminUser = {
+        id: 'superadmin-sherzod',
+        fullName: 'Bosh Superadmin (@Sherzodjanovich_7)',
+        email: REQUIRED_ADMIN_LOGIN,
+        password: REQUIRED_ADMIN_PASS,
+        role: 'superadmin',
+        isBlocked: false,
+        createdAt: new Date().toISOString(),
+      };
 
-    if (!foundAdmin) {
-      setError("Bunday email ro‘yxatdan o‘tmagan yoki xato kiritildi.");
-      return;
-    }
-
-    if (foundAdmin.password !== cleanPass) {
-      setError("Kiritilgan parol noto‘g‘ri. Qaytadan urinib ko‘ring.");
-      return;
-    }
-
-    if (foundAdmin.isBlocked) {
-      setError("Ushbu hisob Superadmin tomonidan bloklangan! Kirish taqiqlangan.");
-      return;
-    }
-
-    // Success
-    setEmail('');
-    setPassword('');
-    onLoginSuccess(foundAdmin);
-  };
-
-  // Google Login Simulation for Superadmin axiy3735@gmail.com
-  const handleGoogleLogin = () => {
-    const superadmin = admins.find(a => a.email === 'axiy3735@gmail.com') || admins[0];
-    if (superadmin) {
-      if (superadmin.isBlocked) {
-        setError("Superadmin hisobi bloklangan holatda!");
-        return;
-      }
-      setEmail('');
+      setLogin('');
       setPassword('');
-      onLoginSuccess(superadmin);
+      onLoginSuccess(verifiedSuperAdmin);
+      return;
     }
+
+    triggerHaptic('error');
+    setError('Login yoki parol xato! Admin panelga kirish rad etildi.');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
-      <div 
-        className="relative w-full max-w-md bg-[#0e1017] border-2 border-red-600/70 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-red-950/60 space-y-6"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md bg-[#0e1017] border-2 border-red-600/70 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-red-950/60 space-y-6 animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition"
+          aria-label="Yopish"
         >
           <X className="w-4 h-4" />
         </button>
@@ -90,39 +93,40 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           </div>
 
           <div className="inline-block px-3 py-0.5 rounded-full bg-red-950/80 text-red-400 border border-red-800/60 text-[10px] font-bold uppercase tracking-widest font-racing">
-            Xavfsiz Boshqaruv Tizimi
+            2-Qadam: Login va Parol
           </div>
           <h2 className="text-2xl font-racing font-bold text-white tracking-wide">
-            Admin Tizimiga Kirish
+            Admin Avtorizatsiyasi
           </h2>
           <p className="text-xs text-zinc-400">
-            Faqat vakolatli xodimlar va Superadmin uchun
+            Maxfiy kod tasdiqlandi. Endi shaxsiy Login va Parolni kiriting
           </p>
         </div>
 
         {error && (
-          <div className="p-3.5 rounded-xl bg-red-950/80 border border-red-800 text-red-200 text-xs flex items-center gap-2">
+          <div className="p-3.5 rounded-xl bg-red-950/80 border border-red-800 text-red-200 text-xs flex items-center gap-2 animate-in fade-in">
             <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs" autoComplete="off">
           <div>
             <label className="block text-zinc-300 font-semibold mb-1.5">
-              Admin Email Manzili:
+              Login:
             </label>
             <div className="relative">
               <input
-                type="email"
+                type="text"
                 required
                 autoFocus
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="masalan: axiy3735@gmail.com"
-                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-2.5 pl-10 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500"
+                autoComplete="off"
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
+                placeholder="Loginni kiriting..."
+                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-3 pl-10 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500 transition"
               />
-              <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
             </div>
           </div>
 
@@ -134,10 +138,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Parolingizni kiriting..."
-                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-2.5 pl-10 pr-10 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500"
+                placeholder="Parolni kiriting..."
+                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-3 pl-10 pr-10 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500 transition"
               />
               <KeyRound className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <button
@@ -154,54 +159,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             type="submit"
             className="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-racing font-bold uppercase text-xs tracking-wider shadow-lg shadow-red-900/50 flex items-center justify-center gap-2 active:scale-95 transition"
           >
-            <span>Tizimga Kirish</span>
+            <span>Admin Panelni Ochish</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        {/* Divider */}
-        <div className="relative flex items-center justify-center">
-          <div className="border-t border-zinc-800 w-full"></div>
-          <span className="bg-[#0e1017] px-3 text-[10px] text-zinc-500 uppercase tracking-wider shrink-0">
-            yoki tezkor usul
-          </span>
-        </div>
-
-        {/* Google Login Simulation Button */}
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-850 border border-zinc-750 hover:border-zinc-650 text-white text-xs font-semibold flex items-center justify-center gap-2.5 transition group"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path
-              fill="#4285F4"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-            />
-            <path
-              fill="#EA4335"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-            />
-          </svg>
-          <span>Google orqali kirish (axiy3735@gmail.com)</span>
-        </button>
-
-        {/* Info card for Superadmin */}
-        <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-[11px] text-zinc-400 space-y-1">
-          <div className="flex items-center gap-1.5 text-zinc-300 font-semibold">
-            <ShieldCheck className="w-3.5 h-3.5 text-red-500" />
-            <span>Asosiy Superadmin ma'lumotlari:</span>
-          </div>
-          <div>Email: <strong className="text-white">axiy3735@gmail.com</strong></div>
-          <div>Boshlang‘ich parol: <strong className="text-red-400 font-mono">Ravon7777</strong></div>
+        <div className="pt-2 border-t border-zinc-800/80 text-[11px] text-zinc-500 flex items-center justify-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-red-500" />
+          <span>3 bosqichli himoya: Kod (0606) + Login + Parol</span>
         </div>
       </div>
     </div>

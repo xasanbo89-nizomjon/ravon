@@ -35,7 +35,7 @@ export const Footer: React.FC<FooterProps> = ({
             <div>
               <h4 className="font-bold text-white text-xs">Tezkor Yetkazish</h4>
               <p className="text-[11px] text-zinc-400">
-                Toshkentda {siteSettings.deliveryCost.toLocaleString()} so‘m, 1 mln so‘mdan bepul
+                Namangan viloyati, Uychi tumani va O‘zbekiston bo‘ylab tezkor yetkazish
               </p>
             </div>
           </div>
@@ -77,7 +77,7 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
           </div>
           <p className="text-zinc-400 text-xs leading-relaxed">
-            {siteSettings.shopName} — O‘zbekistondagi barcha GM va Ravon modellari uchun sifatli ehtiyot qismlar, zamonaviy tyuning detallari va AI yordamida zapchast qidiruv xizmati.
+            <strong className="text-zinc-200">Biz haqimizda:</strong> {siteSettings.shopName} — <strong className="text-zinc-200">Namangan viloyati, Uychi tumanida</strong> joylashgan barcha GM va Ravon modellari uchun sifatli ehtiyot qismlar, zamonaviy tyuning detallari va AI yordamida zapchast qidiruv markazi.
           </p>
           <div className="flex items-center gap-2 pt-2">
             <span className="px-2 py-1 rounded bg-zinc-900 text-zinc-300 font-bold text-[10px]">Click</span>
@@ -126,16 +126,28 @@ export const Footer: React.FC<FooterProps> = ({
           <div className="space-y-2.5 text-xs">
             <div className="flex items-start gap-2">
               <MapPin className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-              <span>{siteSettings.addressCity}, {siteSettings.addressBazaar}, {siteSettings.addressDetails}</span>
+              <div>
+                <div className="font-bold text-white">Namangan viloyati, Uychi tumani</div>
+                <div className="text-zinc-400 text-[11px]">
+                  {siteSettings.addressDetails && !siteSettings.addressDetails.toLowerCase().includes('sergeli') && !siteSettings.addressDetails.toLowerCase().includes('toshkent')
+                    ? siteSettings.addressDetails
+                    : 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi'}
+                </div>
+              </div>
             </div>
             {siteSettings.mapLocationUrl && (
               <a 
-                href={siteSettings.mapLocationUrl} 
+                href={
+                  siteSettings.mapLocationUrl.toLowerCase().includes('toshkent') ||
+                  siteSettings.mapLocationUrl.toLowerCase().includes('sergeli')
+                    ? 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani'
+                    : siteSettings.mapLocationUrl
+                } 
                 target="_blank" 
                 rel="noreferrer"
                 className="text-red-400 hover:underline flex items-center gap-1 font-semibold pl-6"
               >
-                <span>Xaritada ko‘rish (Lokatsiya)</span>
+                <span>Xaritada ko‘rish (Namangan vil., Uychi tumani)</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             )}
@@ -158,11 +170,17 @@ export const Footer: React.FC<FooterProps> = ({
                 </a>
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-red-500 shrink-0" />
-              <a href={siteSettings.telegramChannel} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                Telegram: @{siteSettings.telegramUsername}
-              </a>
+            <div className="flex items-start gap-2">
+              <MessageSquare className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <a href="https://t.me/Doliyev_dilshod" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-semibold">
+                  @Doliyev_dilshod
+                </a>
+                <span className="text-zinc-600">•</span>
+                <a href="https://t.me/Sherzodjanovich_7" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-semibold">
+                  @Sherzodjanovich_7
+                </a>
+              </div>
             </div>
             <div className="flex items-center gap-2 text-zinc-400">
               <Clock className="w-4 h-4 text-red-500 shrink-0" />

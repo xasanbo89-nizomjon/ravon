@@ -130,3 +130,16 @@ export interface AiAnalysisResult {
   searchKeywords: string[];
   confidenceScore?: number;
 }
+
+export interface ProductReview {
+  id: string;
+  productId: string;
+  productName: string;
+  productBazaarName?: string;
+  customerName: string;
+  rating: number; // 1 to 5
+  comment: string;
+  createdAt: string;
+  isApproved: boolean;
+}
+

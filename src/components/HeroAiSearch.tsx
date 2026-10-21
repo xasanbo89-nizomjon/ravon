@@ -116,13 +116,15 @@ export const HeroAiSearch: React.FC<HeroAiSearchProps> = ({
     reader.readAsDataURL(file);
   };
 
-// Safe error formatter to guarantee NO raw JSON ever appears on screen
+// Safe error formatter to guarantee NO raw JSON or 404 errors ever appear on screen
 function cleanAiErrorMessage(rawMsg?: string | null): string {
+  const friendlyDefault = "Xizmat bilan bog'lanishda vaqtinchalik uzilish yuz berdi. Iltimos, birozdan so'ng qayta urinib ko'ring.";
+
   if (!rawMsg) {
-    return "Hozirda AI serverda yuklama yuqori. Iltimos, 5-10 soniyadan so'ng qayta urinib ko'ring.";
+    return friendlyDefault;
   }
 
-  const str = String(rawMsg);
+  const str = String(rawMsg).trim();
   const lower = str.toLowerCase();
 
   // 1. High demand / 503 / 429 / overloaded
@@ -135,59 +137,44 @@ function cleanAiErrorMessage(rawMsg?: string | null): string {
     lower.includes('resource_exhausted') ||
     lower.includes('rate limit') ||
     lower.includes('quota') ||
-    lower.includes('yuklama yuqori')
+    lower.includes('yuklama yuqori') ||
+    lower.includes('navbat yuqori')
   ) {
-    return "Hozirda AI serverda yuklama yuqori. Iltimos, 5-10 soniyadan so'ng qayta urinib ko'ring.";
+    return "Hozirda AI qidiruv tizimida navbat yuqori. Iltimos, 5-10 soniyadan so'ng qayta urinib ko'ring.";
   }
 
-  // 2. API key issues
+  // 2. Hide 404, HTML, raw JSON, and technical messages from customers
   if (
+    str.startsWith('{') ||
+    str.startsWith('[') ||
+    str.includes('{"') ||
+    str.includes('"code":') ||
+    str.includes('"status":') ||
+    str.includes('"message":') ||
+    str.includes('<!DOCTYPE') ||
+    str.includes('<html') ||
+    lower.includes('404') ||
+    lower.includes('not found') ||
+    lower.includes('status:') ||
+    lower.includes('unexpected token') ||
+    lower.includes('is not valid json') ||
+    lower.includes('so\'ralgan api') ||
+    lower.includes('so\'ralgan xizmat') ||
+    lower.includes('html sahifa') ||
     lower.includes('leaked') ||
     lower.includes('permission_denied') ||
-    lower.includes('api_key_invalid') ||
-    lower.includes('api key not valid')
+    lower.includes('api_key') ||
+    lower.includes('gemini_api_key')
   ) {
-    return "Gemini API kaliti bekor qilingan (leaked / yaroqsiz). Iltimos, AI Studio panelidagi 'Settings > Secrets' bo'limida yangi GEMINI_API_KEY kiriting.";
+    return friendlyDefault;
   }
 
-  if (lower.includes('gemini_api_key topilmadi')) {
-    return "GEMINI_API_KEY topilmadi. AI Studio 'Settings > Secrets' bo'limida yangi kalit kiriting.";
-  }
-
-  // 3. Raw JSON (never display raw JSON like {"error":{"code":503...}} to the user)
-  if (str.trim().startsWith('{') || str.includes('{"error"') || str.includes('"code":') || str.includes('"status":') || str.includes('"message":')) {
-    try {
-      const match = str.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        const code = parsed?.error?.code;
-        const status = String(parsed?.error?.status || '').toUpperCase();
-        const msg = String(parsed?.error?.message || '').toLowerCase();
-        if (
-          code === 503 ||
-          code === 429 ||
-          status === 'UNAVAILABLE' ||
-          status === 'RESOURCE_EXHAUSTED' ||
-          msg.includes('overload') ||
-          msg.includes('high demand') ||
-          msg.includes('unavailable')
-        ) {
-          return "Hozirda AI serverda yuklama yuqori. Iltimos, 5-10 soniyadan so'ng qayta urinib ko'ring.";
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return "Hozirda AI serverda yuklama yuqori. Iltimos, 5-10 soniyadan so'ng qayta urinib ko'ring.";
-  }
-
-  // 4. Strip technical prefixes
   const cleaned = str.replace(/^\[GoogleGenAI:[^\]]+\]\s*/i, '').trim();
-  if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
-    return "Hozirda AI serverda yuklama yuqori. Iltimos, 5-10 soniyadan so'ng qayta urinib ko'ring.";
+  if (cleaned.startsWith('{') || cleaned.endsWith('}')) {
+    return friendlyDefault;
   }
 
-  return cleaned || "Hozirda AI serverda yuklama yuqori. Iltimos, 5-10 soniyadan so'ng qayta urinib ko'ring.";
+  return cleaned || friendlyDefault;
 }
 
   const analyzeImage = async (imagePayload: { imageBase64?: string; imageUrl?: string }, retryCount = 0) => {
@@ -870,7 +857,7 @@ function cleanAiErrorMessage(rawMsg?: string | null): string {
                     <div className="bg-red-950/30 p-4 rounded-xl border border-red-900/40">
                       <div className="text-xs font-bold uppercase text-red-400 mb-1.5 flex items-center gap-1.5">
                         <Sparkles className="w-4 h-4 text-red-500" />
-                        Sergeli ustasidan maslahat:
+                        Ravon Auto Tuning ustasidan maslahat:
                       </div>
                       <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
                         {result.tuningTips}
@@ -891,7 +878,7 @@ function cleanAiErrorMessage(rawMsg?: string | null): string {
                         <span>Ombordan aniq narxini so‘rash (5 daqiqada javob beramiz)</span>
                       </h3>
                       <p className="text-xs text-zinc-300 mt-0.5">
-                        Ushbu <b>"{result.bazaarName}"</b> omborimizda yoki Sergeli bozorida bormi? Telefon raqamingizni qoldiring, mutaxassisimiz Telegram orqali aniq narx va mavjudligini aytadi.
+                        Ushbu <b>"{result.bazaarName}"</b> Namangan viloyati, Uychi tumanidagi do‘konimiz va omborimizda bormi? Telefon raqamingizni qoldiring, mutaxassisimiz Telegram orqali aniq narx va mavjudligini aytadi.
                       </p>
                     </div>
                   </div>

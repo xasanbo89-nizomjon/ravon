@@ -37,39 +37,36 @@ import {
   OrderRecord,
   AdminUser,
   PromoCode,
-  AppliedPromo
+  AppliedPromo,
+  ProductReview
 } from './types';
 import { ShoppingBag, Sparkles, Check, Lock } from 'lucide-react';
 import { sendTelegramNotification, formatOrderTelegramMessage } from './utils/telegram';
 import { MobileBottomBar } from './components/MobileBottomBar';
 import { initTelegramWebApp, isTelegramWebApp } from './utils/telegramWebApp';
 import { formatUzbekSum } from './utils/formatters';
+import {
+  sanitizeProductsList,
+  sanitizeOrdersList,
+  sanitizeSiteSettings,
+  pushRealtimeState,
+  subscribeToRealtimeSync,
+} from './services/supabaseSync';
 
 export default function App() {
-  // 1. Site Settings (LocalStorage backed)
+  // 1. Site Settings (LocalStorage backed - strictly Namangan viloyati, Uychi tumani)
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
     try {
       const saved = localStorage.getItem('ravon_site_settings');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (
-          !parsed.phonePrimary || 
-          parsed.phonePrimary.includes('463-37-36') || 
-          parsed.telegramUsername === 'RavonAutoTuningUz'
-        ) {
-          const updated = {
-            ...DEFAULT_SITE_SETTINGS,
-            ...parsed,
-            phonePrimary: '+998 97 524 04 01',
-            telegramUsername: 'Doliyev_dilshod',
-            telegramChannel: 'https://t.me/Doliyev_dilshod',
-            whatsappUrl: 'https://wa.me/998975240401',
-          };
-          localStorage.setItem('ravon_site_settings', JSON.stringify(updated));
-          return updated;
+        const { settings, wasModified } = sanitizeSiteSettings(parsed);
+        if (wasModified) {
+          localStorage.setItem('ravon_site_settings', JSON.stringify(settings));
         }
-        return { ...DEFAULT_SITE_SETTINGS, ...parsed };
+        return settings;
       }
+      localStorage.setItem('ravon_site_settings', JSON.stringify(DEFAULT_SITE_SETTINGS));
       return DEFAULT_SITE_SETTINGS;
     } catch {
       return DEFAULT_SITE_SETTINGS;
@@ -86,13 +83,21 @@ export default function App() {
     }
   });
 
-  // 3. Products List (LocalStorage backed)
+  // 3. Products List (LocalStorage backed - never reload static products like Zimmer if empty/cleared)
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem('ravon_products');
-      return saved ? JSON.parse(saved) : PRODUCTS;
+      if (!saved) {
+        return [];
+      }
+      const parsed = JSON.parse(saved);
+      const cleaned = sanitizeProductsList(parsed);
+      if (Array.isArray(parsed) && cleaned.length !== parsed.length) {
+        localStorage.setItem('ravon_products', JSON.stringify(cleaned));
+      }
+      return cleaned;
     } catch {
-      return PRODUCTS;
+      return [];
     }
   });
 
@@ -115,34 +120,42 @@ export default function App() {
     }
   });
 
-  // 5. Orders CRM (LocalStorage backed)
+  // 5. Orders CRM (LocalStorage backed - test orders stripped)
   const [orders, setOrders] = useState<OrderRecord[]>(() => {
     try {
       const saved = localStorage.getItem('ravon_orders');
-      return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      const cleaned = sanitizeOrdersList(parsed);
+      if (Array.isArray(parsed) && cleaned.length !== parsed.length) {
+        localStorage.setItem('ravon_orders', JSON.stringify(cleaned));
+      }
+      return cleaned;
     } catch {
-      return INITIAL_ORDERS;
+      return [];
     }
   });
 
-  // 6. Registered Admins (Role-based access, LocalStorage backed)
+  // 6. Registered Admins (Strict Superadmin sherzodjanovich_7 only)
   const [admins, setAdmins] = useState<AdminUser[]>(() => {
     try {
-      const saved = localStorage.getItem('ravon_admins');
-      return saved ? JSON.parse(saved) : INITIAL_ADMINS;
-    } catch {
-      return INITIAL_ADMINS;
-    }
+      localStorage.setItem('ravon_admins', JSON.stringify(INITIAL_ADMINS));
+    } catch {}
+    return INITIAL_ADMINS;
   });
 
-  // Current authenticated admin
+  // Current authenticated admin (NEVER auto-restored; requires 0606 + sherzodjanovich_7 + xasan.95 in sequence)
   const [currentUser, setCurrentUser] = useState<AdminUser | null>(() => {
     try {
-      const saved = sessionStorage.getItem('ravon_current_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+      sessionStorage.removeItem('ravon_strict_auth_v2');
+      sessionStorage.removeItem('ravon_admin_authorized');
+      sessionStorage.removeItem('ravon_admin_logged');
+      sessionStorage.removeItem('ravon_current_user');
+      localStorage.removeItem('ravon_admin_authorized');
+      localStorage.removeItem('ravon_admin_logged');
+      localStorage.removeItem('ravon_current_user');
+    } catch {}
+    return null;
   });
 
   // Shopping Cart state
@@ -210,6 +223,20 @@ export default function App() {
     }
   });
 
+  // Customer Product Reviews & Ratings (LocalStorage backed)
+  const [reviews, setReviews] = useState<ProductReview[]>(() => {
+    try {
+      const saved = localStorage.getItem('ravon_product_reviews');
+      if (saved !== null) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
+
   // Active Applied Promo for buyer session
   const [appliedPromo, setAppliedPromo] = useState<AppliedPromo | null>(() => {
     try {
@@ -221,10 +248,9 @@ export default function App() {
   });
   const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
 
-  // Admin Panel states
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
-    return sessionStorage.getItem('ravon_admin_logged') === 'true';
-  });
+  // Admin Panel states (Strictly requires Step 1: 0606 PIN -> Step 2: Login sherzodjanovich_7 & Parol xasan.95)
+  const [isPinVerified, setIsPinVerified] = useState<boolean>(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isSecretPinModalOpen, setIsSecretPinModalOpen] = useState(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
@@ -232,7 +258,7 @@ export default function App() {
   // Toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Sync state changes to LocalStorage
+  // Sync state changes to LocalStorage (Admins are strictly local, never pushed to cloud sync)
   const handleUpdateAdmins = (newAdmins: AdminUser[]) => {
     setAdmins(newAdmins);
     localStorage.setItem('ravon_admins', JSON.stringify(newAdmins));
@@ -248,41 +274,162 @@ export default function App() {
   const handleUpdateSiteSettings = (newSettings: SiteSettings) => {
     setSiteSettings(newSettings);
     localStorage.setItem('ravon_site_settings', JSON.stringify(newSettings));
+    pushRealtimeState({ siteSettings: newSettings });
   };
 
   const handleUpdateBanner = (newBanner: AnnouncementBanner) => {
     setAnnouncementBanner(newBanner);
     localStorage.setItem('ravon_announcement', JSON.stringify(newBanner));
+    pushRealtimeState({ announcementBanner: newBanner });
   };
 
   const handleUpdateProducts = (newProducts: Product[]) => {
-    setProducts(newProducts);
-    localStorage.setItem('ravon_products', JSON.stringify(newProducts));
+    const cleaned = sanitizeProductsList(newProducts);
+    setProducts(cleaned);
+    localStorage.setItem('ravon_products', JSON.stringify(cleaned));
+    pushRealtimeState({ products: cleaned });
   };
 
   const handleUpdateCarModels = (newModels: string[]) => {
     setCarModels(newModels);
     localStorage.setItem('ravon_car_models', JSON.stringify(newModels));
+    pushRealtimeState({ carModels: newModels });
   };
 
   const handleUpdateCategories = (newCats: string[]) => {
     setCategories(newCats);
     localStorage.setItem('ravon_categories', JSON.stringify(newCats));
+    pushRealtimeState({ categories: newCats });
   };
 
   const handleUpdateOrders = (newOrders: OrderRecord[]) => {
     setOrders(newOrders);
     localStorage.setItem('ravon_orders', JSON.stringify(newOrders));
+    pushRealtimeState({ orders: newOrders });
   };
 
   const handleUpdatePromoCodes = (newPromos: PromoCode[]) => {
     setPromoCodes(newPromos);
     try {
       localStorage.setItem('ravon_promocodes', JSON.stringify(newPromos));
+      pushRealtimeState({ promoCodes: newPromos });
     } catch (e) {
       console.error('Failed to save promo codes:', e);
     }
   };
+
+  const handleUpdateReviews = (newReviews: ProductReview[]) => {
+    setReviews(newReviews);
+    try {
+      localStorage.setItem('ravon_product_reviews', JSON.stringify(newReviews));
+      pushRealtimeState({ reviews: newReviews });
+    } catch (e) {
+      console.error('Failed to save reviews:', e);
+    }
+
+    // Recalculate product rating & reviewCount based on approved reviews
+    const updatedProducts = products.map((prod) => {
+      const prodReviews = newReviews.filter(
+        (r) => r.productId === prod.id && r.isApproved !== false
+      );
+      if (prodReviews.length === 0) return prod;
+      const avgRating = Number(
+        (
+          prodReviews.reduce((acc, item) => acc + Number(item.rating || 5), 0) /
+          prodReviews.length
+        ).toFixed(1)
+      );
+      return {
+        ...prod,
+        rating: avgRating,
+        reviewCount: prodReviews.length,
+      };
+    });
+    setProducts(updatedProducts);
+    try {
+      localStorage.setItem('ravon_products', JSON.stringify(updatedProducts));
+    } catch {}
+  };
+
+  const handleAddReview = (
+    product: Product,
+    rating: number,
+    customerName: string,
+    comment: string
+  ) => {
+    const newReview: ProductReview = {
+      id: `rev-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      productId: product.id,
+      productName: product.name,
+      productBazaarName: product.bazaarName,
+      customerName: customerName.trim() || 'Xaridor',
+      rating: Math.min(5, Math.max(1, Number(rating) || 5)),
+      comment: comment.trim(),
+      createdAt: new Date().toISOString(),
+      isApproved: true,
+    };
+
+    const updatedReviews = [newReview, ...reviews];
+    handleUpdateReviews(updatedReviews);
+    showToast(`"${product.bazaarName}" uchun baho va izohingiz saqlandi!`);
+  };
+
+  // Real-time Cross-Device & Cross-Tab Synchronization listener
+  useEffect(() => {
+    const unsubscribe = subscribeToRealtimeSync((remote) => {
+      if (remote.products !== undefined) {
+        const cleaned = sanitizeProductsList(remote.products);
+        setProducts(cleaned);
+        try {
+          localStorage.setItem('ravon_products', JSON.stringify(cleaned));
+        } catch {}
+      }
+      if (remote.orders !== undefined) {
+        setOrders(remote.orders);
+        try {
+          localStorage.setItem('ravon_orders', JSON.stringify(remote.orders));
+        } catch {}
+      }
+      if (remote.siteSettings !== undefined) {
+        const { settings: normalizedSettings } = sanitizeSiteSettings(remote.siteSettings);
+        setSiteSettings(normalizedSettings);
+        try {
+          localStorage.setItem('ravon_site_settings', JSON.stringify(normalizedSettings));
+        } catch {}
+      }
+      if (remote.announcementBanner !== undefined) {
+        setAnnouncementBanner(remote.announcementBanner);
+        try {
+          localStorage.setItem('ravon_announcement', JSON.stringify(remote.announcementBanner));
+        } catch {}
+      }
+      if (remote.carModels !== undefined) {
+        setCarModels(remote.carModels);
+        try {
+          localStorage.setItem('ravon_car_models', JSON.stringify(remote.carModels));
+        } catch {}
+      }
+      if (remote.categories !== undefined) {
+        setCategories(remote.categories);
+        try {
+          localStorage.setItem('ravon_categories', JSON.stringify(remote.categories));
+        } catch {}
+      }
+      if (remote.promoCodes !== undefined) {
+        setPromoCodes(remote.promoCodes);
+        try {
+          localStorage.setItem('ravon_promocodes', JSON.stringify(remote.promoCodes));
+        } catch {}
+      }
+      if (remote.reviews !== undefined && Array.isArray(remote.reviews)) {
+        setReviews(remote.reviews);
+        try {
+          localStorage.setItem('ravon_product_reviews', JSON.stringify(remote.reviews));
+        } catch {}
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   const handleApplyPromo = (promo: AppliedPromo) => {
     setAppliedPromo(promo);
@@ -438,61 +585,36 @@ export default function App() {
     }
   }, [cartCount, discountedCartTotal, isCheckoutOpen]);
 
-  // Superadmin direct unlock via secret 0606 code
-  const openSuperAdminDirectly = useCallback(() => {
-    const superAdmin = admins.find((a) => a.role === 'superadmin') || admins[0];
-    setCurrentUser(superAdmin);
-    setIsAdminLoggedIn(true);
-    sessionStorage.setItem('ravon_admin_authorized', 'true');
-    sessionStorage.setItem('ravon_admin_logged', 'true');
-    sessionStorage.setItem('ravon_current_user', JSON.stringify(superAdmin));
+  // Step 1 -> Step 2 Admin Security Trigger (Always starts from Step 1: 0606 PIN -> Step 2: Login & Password)
+  const triggerTwoStepAdminAccess = useCallback(() => {
+    setIsAdminDashboardOpen(false);
     setIsAdminLoginOpen(false);
-    setIsSecretPinModalOpen(false);
-    setIsAdminDashboardOpen(true);
-    showToast("Superadmin paneliga xush kelibsiz!");
-  }, [admins]);
+    setIsPinVerified(false);
+    setIsAdminLoggedIn(false);
+    setCurrentUser(null);
+    setIsSecretPinModalOpen(true);
+  }, []);
 
   // Global secret listeners (Ctrl + Shift + 7, Alt + A, 3 clicks, 2s long press)
   useEffect(() => {
-    const handleSecretTrigger = () => {
-      const isAuth = sessionStorage.getItem('ravon_admin_authorized') === 'true' || 
-                     sessionStorage.getItem('ravon_admin_logged') === 'true';
-      if (isAuth) {
-        openSuperAdminDirectly();
-      } else {
-        setIsSecretPinModalOpen(true);
-      }
-    };
+    (window as any).__openRavonAdminPanel = triggerTwoStepAdminAccess;
+    (window as any).__openSecretPinModal = triggerTwoStepAdminAccess;
 
-    (window as any).__openRavonAdminPanel = openSuperAdminDirectly;
-    (window as any).__openSecretPinModal = handleSecretTrigger;
-
-    const handleSecretEvent = (e: any) => {
-      if (e.detail?.code === '0606') {
-        openSuperAdminDirectly();
-      } else {
-        handleSecretTrigger();
-      }
-    };
-
-    const handlePinModalEvent = () => {
-      handleSecretTrigger();
+    const handleSecretEvent = () => {
+      triggerTwoStepAdminAccess();
     };
 
     window.addEventListener('open-ravon-admin', handleSecretEvent);
-    window.addEventListener('open-ravon-pin-modal', handlePinModalEvent);
+    window.addEventListener('open-ravon-pin-modal', handleSecretEvent);
 
-    // Direct React hotkey listener: Alt + A yoki Ctrl + Shift + 7
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Alt + A (or Alt + a)
       if (e.altKey && (e.code === 'KeyA' || e.key.toLowerCase() === 'a')) {
         e.preventDefault();
         e.stopPropagation();
-        handleSecretTrigger();
+        triggerTwoStepAdminAccess();
         return;
       }
 
-      // Ctrl + Shift + 7 (or Cmd + Shift + 7)
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const isShift = e.shiftKey;
       const isDigit7 = e.code === 'Digit7' || e.code === 'Numpad7' || e.key === '7' || e.key === '&';
@@ -500,43 +622,36 @@ export default function App() {
       if (isCtrlOrCmd && isShift && isDigit7) {
         e.preventDefault();
         e.stopPropagation();
-        handleSecretTrigger();
+        triggerTwoStepAdminAccess();
         return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
 
-    // Agar index.html skripti ochish belgisini qoldirgan bo'lsa
-    if (sessionStorage.getItem('ravon_open_admin_modal') === 'true') {
-      sessionStorage.removeItem('ravon_open_admin_modal');
-      openSuperAdminDirectly();
-    }
-
     return () => {
       delete (window as any).__openRavonAdminPanel;
       delete (window as any).__openSecretPinModal;
       window.removeEventListener('open-ravon-admin', handleSecretEvent);
-      window.removeEventListener('open-ravon-pin-modal', handlePinModalEvent);
+      window.removeEventListener('open-ravon-pin-modal', handleSecretEvent);
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [openSuperAdminDirectly]);
+  }, [triggerTwoStepAdminAccess]);
 
-  // Admin access handler
+  // Admin access handler (Step 1: Secret PIN 0606 -> Step 2: Login & Password)
   const handleOpenAdminLogin = () => {
-    if (isAdminLoggedIn) {
-      setIsAdminDashboardOpen(true);
-    } else {
-      setIsAdminLoginOpen(true);
-    }
+    triggerTwoStepAdminAccess();
   };
 
   const handleAdminLoginSuccess = (user: AdminUser) => {
+    if (!isPinVerified || user.email.toLowerCase() !== 'sherzodjanovich_7') {
+      setIsAdminLoginOpen(false);
+      setIsSecretPinModalOpen(true);
+      return;
+    }
     setCurrentUser(user);
     setIsAdminLoggedIn(true);
-    sessionStorage.setItem('ravon_admin_authorized', 'true');
-    sessionStorage.setItem('ravon_admin_logged', 'true');
-    sessionStorage.setItem('ravon_current_user', JSON.stringify(user));
+    setIsSecretPinModalOpen(false);
     setIsAdminLoginOpen(false);
     setIsAdminDashboardOpen(true);
     showToast(`Xush kelibsiz, ${user.fullName}!`);
@@ -544,13 +659,15 @@ export default function App() {
 
   const handleAdminLogout = () => {
     setCurrentUser(null);
+    setIsPinVerified(false);
     setIsAdminLoggedIn(false);
+    sessionStorage.removeItem('ravon_strict_auth_v2');
     sessionStorage.removeItem('ravon_admin_authorized');
     sessionStorage.removeItem('ravon_admin_logged');
     sessionStorage.removeItem('ravon_current_user');
     sessionStorage.removeItem('ravon_open_admin_modal');
     setIsAdminDashboardOpen(false);
-    showToast("Admin hisobidan chiqildi. Qayta kirish uchun parol talab etiladi.");
+    showToast("Admin hisobidan chiqildi. Qayta kirish uchun kod (0606), login va parol talab etiladi.");
   };
 
   // Handle AI Search result from Hero section
@@ -701,6 +818,7 @@ export default function App() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {filteredProducts.map((product) => {
               const inCartItem = cart.find((i) => i.product.id === product.id);
+              const productReviews = reviews.filter((r) => r.productId === product.id);
               return (
                 <ProductCard
                   key={product.id}
@@ -710,6 +828,8 @@ export default function App() {
                   inCartCount={inCartItem ? inCartItem.quantity : 0}
                   isCompared={compareItems.some((c) => c.id === product.id)}
                   onToggleCompare={handleToggleCompare}
+                  reviews={productReviews}
+                  onAddReview={handleAddReview}
                 />
               );
             })}
@@ -744,6 +864,8 @@ export default function App() {
         onAddToCart={handleAddToCart}
         isCompared={selectedProduct ? compareItems.some((c) => c.id === selectedProduct.id) : false}
         onToggleCompare={handleToggleCompare}
+        reviews={selectedProduct ? reviews.filter((r) => r.productId === selectedProduct.id) : []}
+        onAddReview={handleAddReview}
       />
 
       {/* Cart Drawer */}
@@ -866,37 +988,53 @@ export default function App() {
         onClearCompare={handleClearCompare}
       />
 
-      {/* Admin Login Modal (Email + Password, Google simulation) */}
+      {/* Step 2: Admin Login Modal (Opened ONLY after Step 1 PIN "0606" is verified) */}
       <AdminLoginModal
-        isOpen={isAdminLoginOpen}
-        onClose={() => setIsAdminLoginOpen(false)}
+        isOpen={isAdminLoginOpen && isPinVerified}
+        onClose={() => {
+          setIsAdminLoginOpen(false);
+          setIsPinVerified(false);
+        }}
         admins={admins}
         onLoginSuccess={handleAdminLoginSuccess}
       />
 
-      {/* Super Admin Dashboard Modal (Role-Based Access) */}
-      <AdminDashboardModal
-        isOpen={isAdminDashboardOpen}
-        onClose={() => setIsAdminDashboardOpen(false)}
-        onLogout={handleAdminLogout}
-        currentUser={currentUser || admins[0]}
-        admins={admins}
-        onUpdateAdmins={handleUpdateAdmins}
-        siteSettings={siteSettings}
-        onUpdateSiteSettings={handleUpdateSiteSettings}
-        announcementBanner={announcementBanner}
-        onUpdateBanner={handleUpdateBanner}
-        products={products}
-        onUpdateProducts={handleUpdateProducts}
-        carModels={carModels}
-        onUpdateCarModels={handleUpdateCarModels}
-        categories={categories}
-        onUpdateCategories={handleUpdateCategories}
-        orders={orders}
-        onUpdateOrders={handleUpdateOrders}
-        promoCodes={promoCodes}
-        onUpdatePromoCodes={handleUpdatePromoCodes}
-      />
+      {/* Step 3: Super Admin Dashboard Modal (Rendered ONLY when 0606 + sherzodjanovich_7 + xasan.95 are all verified) */}
+      {isAdminDashboardOpen &&
+        isPinVerified &&
+        isAdminLoggedIn &&
+        currentUser &&
+        currentUser.email.toLowerCase() === 'sherzodjanovich_7' && (
+          <AdminDashboardModal
+            isOpen={isAdminDashboardOpen}
+            onClose={() => {
+              setIsAdminDashboardOpen(false);
+              setIsPinVerified(false);
+              setIsAdminLoggedIn(false);
+              setCurrentUser(null);
+            }}
+            onLogout={handleAdminLogout}
+            currentUser={currentUser}
+            admins={admins}
+            onUpdateAdmins={handleUpdateAdmins}
+            siteSettings={siteSettings}
+            onUpdateSiteSettings={handleUpdateSiteSettings}
+            announcementBanner={announcementBanner}
+            onUpdateBanner={handleUpdateBanner}
+            products={products}
+            onUpdateProducts={handleUpdateProducts}
+            carModels={carModels}
+            onUpdateCarModels={handleUpdateCarModels}
+            categories={categories}
+            onUpdateCategories={handleUpdateCategories}
+            orders={orders}
+            onUpdateOrders={handleUpdateOrders}
+            promoCodes={promoCodes}
+            onUpdatePromoCodes={handleUpdatePromoCodes}
+            reviews={reviews}
+            onUpdateReviews={handleUpdateReviews}
+          />
+        )}
 
       {/* Promo Code Activation Modal for Regular Users */}
       <PromoCodeModal
@@ -910,12 +1048,17 @@ export default function App() {
         onOpenCart={() => setIsCartOpen(true)}
       />
 
-      {/* Secret PIN Modal for Admin Access ("0606") */}
+      {/* Step 1: Secret PIN Modal ("0606") -> Opens Step 2: Login & Password Modal */}
       <SecretPinModal
         isOpen={isSecretPinModalOpen}
-        onClose={() => setIsSecretPinModalOpen(false)}
+        onClose={() => {
+          setIsSecretPinModalOpen(false);
+          setIsPinVerified(false);
+        }}
         onSuccess={() => {
-          openSuperAdminDirectly();
+          setIsPinVerified(true);
+          setIsSecretPinModalOpen(false);
+          setIsAdminLoginOpen(true);
         }}
       />
     </div>

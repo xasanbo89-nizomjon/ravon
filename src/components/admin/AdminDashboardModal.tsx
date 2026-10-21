@@ -44,7 +44,9 @@ import {
   Hash,
   Copy,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Star,
+  EyeOff
 } from 'lucide-react';
 import { 
   Product, 
@@ -55,7 +57,8 @@ import {
   AiAnalysisResult,
   AdminUser,
   AdminRole,
-  PromoCode
+  PromoCode,
+  ProductReview
 } from '../../types';
 import { formatUzbekSum } from '../../utils/formatters';
 import { sendTelegramNotification } from '../../utils/telegram';
@@ -82,6 +85,8 @@ interface AdminDashboardModalProps {
   onUpdateOrders: (orders: OrderRecord[]) => void;
   promoCodes?: PromoCode[];
   onUpdatePromoCodes?: (promoCodes: PromoCode[]) => void;
+  reviews?: ProductReview[];
+  onUpdateReviews?: (reviews: ProductReview[]) => void;
 }
 
 export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
@@ -105,16 +110,23 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   onUpdateOrders,
   promoCodes = [],
   onUpdatePromoCodes,
+  reviews = [],
+  onUpdateReviews,
 }) => {
-  const isSuperadmin = currentUser.role === 'superadmin' || currentUser.email === 'axiy3735@gmail.com';
+  const isSuperadmin =
+    currentUser.role === 'superadmin' ||
+    currentUser.email.toLowerCase() === 'sherzodjanovich_7';
   const isManager = currentUser.role === 'manager';
 
-  const [activeTab, setActiveTab] = useState<'crm' | 'settings' | 'ai-add' | 'products' | 'banner' | 'admins' | 'promocodes'>('crm');
+  const [activeTab, setActiveTab] = useState<'crm' | 'settings' | 'ai-add' | 'products' | 'banner' | 'admins' | 'promocodes' | 'reviews'>('crm');
   const [toast, setToast] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(true);
 
   // TAB 1: Site Settings Form State
   const [tempSettings, setTempSettings] = useState<SiteSettings>(siteSettings);
+  useEffect(() => {
+    setTempSettings(siteSettings);
+  }, [siteSettings, isOpen]);
   const [isSendingTelegramTest, setIsSendingTelegramTest] = useState(false);
   const [telegramTestStatus, setTelegramTestStatus] = useState<{ success?: boolean; message?: string } | null>(null);
   const [isTestingGemini, setIsTestingGemini] = useState(false);
@@ -221,6 +233,41 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     expiresAt: '',
   });
   const [copiedPromoId, setCopiedPromoId] = useState<string | null>(null);
+
+  // TAB 8: Customer Reviews & Ratings Management State
+  const [reviewSearch, setReviewSearch] = useState('');
+  const [reviewRatingFilter, setReviewRatingFilter] = useState<number | 'all'>('all');
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | 'approved' | 'hidden'>('all');
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [editReviewComment, setEditReviewComment] = useState('');
+  const [editReviewRating, setEditReviewRating] = useState<number>(5);
+  const [localReviews, setLocalReviews] = useState<ProductReview[]>(() => {
+    try {
+      const saved = localStorage.getItem('ravon_product_reviews');
+      if (saved !== null) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return reviews;
+  });
+
+  useEffect(() => {
+    if (reviews) {
+      setLocalReviews(reviews);
+    }
+  }, [reviews]);
+
+  const updateReviewsList = (updated: ProductReview[]) => {
+    setLocalReviews(updated);
+    try {
+      localStorage.setItem('ravon_product_reviews', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save reviews to localStorage:', e);
+    }
+    if (onUpdateReviews) {
+      onUpdateReviews(updated);
+    }
+  };
 
   // Fetch active Gemini status on modal open (Must be called unconditionally before any early returns)
   useEffect(() => {
@@ -763,6 +810,22 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           >
             <Package className={`w-4 h-4 ${activeTab === 'products' ? 'text-white' : 'text-red-400'}`} />
             <span>Mahsulotlar va Kategoriyalar</span>
+          </button>
+
+          {/* Reviews & Ratings: visible to all roles */}
+          <button
+            onClick={() => setActiveTab('reviews')}
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-racing font-bold tracking-wide flex items-center gap-2 shrink-0 transition ${
+              activeTab === 'reviews'
+                ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md shadow-red-900/40 border border-red-500'
+                : 'bg-zinc-900/80 hover:bg-zinc-850 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+            }`}
+          >
+            <Star className={`w-4 h-4 ${activeTab === 'reviews' ? 'text-amber-300 fill-amber-300' : 'text-amber-400'}`} />
+            <span>Baholar va Izohlar</span>
+            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold">
+              {localReviews.length}
+            </span>
           </button>
 
           {/* Banner: visible to superadmin and full_admin */}
@@ -2874,7 +2937,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                               {new Date(order.createdAt).toLocaleString('uz-UZ')}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border bg-zinc-900 text-zinc-300 border-zinc-700">
-                              {order.customer.deliveryMethod === 'courier' ? 'Kuryer' : order.customer.deliveryMethod === 'post' ? 'BTS/Fargo Pochta' : 'Sergeli Olib ketish'}
+                              {order.customer.deliveryMethod === 'courier' ? 'Kuryer' : order.customer.deliveryMethod === 'post' ? 'BTS/Fargo Pochta' : 'Uychi tumanidan Olib ketish'}
                             </span>
                           </div>
 
@@ -2987,6 +3050,375 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB: BAHOLAR VA IZOHLARNI BOSHQARISH */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Top Summary Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="p-4 rounded-2xl bg-[#12141e] border border-zinc-800">
+                  <div className="text-xs text-zinc-400">Jami Izohlar</div>
+                  <div className="text-2xl font-racing font-bold text-white mt-1">
+                    {localReviews.length} ta
+                  </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-900/60">
+                  <div className="text-xs text-amber-300">O‘rtacha Baho</div>
+                  <div className="text-2xl font-racing font-bold text-amber-400 mt-1 flex items-center gap-1.5">
+                    <span>
+                      {localReviews.length > 0
+                        ? (
+                            localReviews.reduce((acc, r) => acc + Number(r.rating || 5), 0) /
+                            localReviews.length
+                          ).toFixed(1)
+                        : '5.0'}
+                    </span>
+                    <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                  </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-900/60">
+                  <div className="text-xs text-emerald-300">Faol (Ko‘rinadigan)</div>
+                  <div className="text-2xl font-racing font-bold text-emerald-400 mt-1">
+                    {localReviews.filter((r) => r.isApproved !== false).length} ta
+                  </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800">
+                  <div className="text-xs text-zinc-400">Yashirilgan</div>
+                  <div className="text-2xl font-racing font-bold text-zinc-300 mt-1">
+                    {localReviews.filter((r) => r.isApproved === false).length} ta
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter & Search Bar */}
+              <div className="bg-[#12141e] border border-zinc-800 rounded-2xl p-4 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setReviewRatingFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-racing font-bold transition ${
+                      reviewRatingFilter === 'all'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    Barcha baholar
+                  </button>
+                  {[5, 4, 3, 2, 1].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRatingFilter(star)}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition ${
+                        reviewRatingFilter === star
+                          ? 'bg-amber-500 text-black'
+                          : 'bg-zinc-900 text-amber-400 hover:bg-zinc-800 border border-zinc-800'
+                      }`}
+                    >
+                      <span>{star}</span>
+                      <Star className="w-3 h-3 fill-current" />
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setReviewStatusFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                        reviewStatusFilter === 'all'
+                          ? 'bg-zinc-800 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Hammasi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewStatusFilter('approved')}
+                      className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                        reviewStatusFilter === 'approved'
+                          ? 'bg-emerald-950 text-emerald-300'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Faol
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewStatusFilter('hidden')}
+                      className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                        reviewStatusFilter === 'hidden'
+                          ? 'bg-zinc-800 text-zinc-300'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Yashirilgan
+                    </button>
+                  </div>
+
+                  <div className="relative flex-1 sm:w-64">
+                    <input
+                      type="text"
+                      value={reviewSearch}
+                      onChange={(e) => setReviewSearch(e.target.value)}
+                      placeholder="Mijoz, tovar yoki izoh bo'yicha qidiruv..."
+                      className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-1.5 pl-8 text-xs text-white"
+                    />
+                    <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Reviews List */}
+              {(() => {
+                const filteredReviews = localReviews.filter((r) => {
+                  if (reviewRatingFilter !== 'all' && Number(r.rating) !== reviewRatingFilter) {
+                    return false;
+                  }
+                  if (reviewStatusFilter === 'approved' && r.isApproved === false) {
+                    return false;
+                  }
+                  if (reviewStatusFilter === 'hidden' && r.isApproved !== false) {
+                    return false;
+                  }
+                  if (reviewSearch.trim()) {
+                    const q = reviewSearch.toLowerCase();
+                    return (
+                      (r.customerName || '').toLowerCase().includes(q) ||
+                      (r.comment || '').toLowerCase().includes(q) ||
+                      (r.productName || '').toLowerCase().includes(q) ||
+                      (r.productBazaarName || '').toLowerCase().includes(q)
+                    );
+                  }
+                  return true;
+                });
+
+                if (filteredReviews.length === 0) {
+                  return (
+                    <div className="p-12 text-center bg-[#12141e] border border-zinc-800 rounded-2xl space-y-2">
+                      <MessageSquare className="w-8 h-8 text-zinc-600 mx-auto" />
+                      <div className="text-sm font-bold text-zinc-300">
+                        Baholar va izohlar topilmadi
+                      </div>
+                      <p className="text-xs text-zinc-500">
+                        Mijozlar tovar kartalarida baho va qisqa izoh qoldirganda ular shu yerda
+                        aks etadi.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredReviews.map((rev) => {
+                      const isEditing = editingReviewId === rev.id;
+                      const linkedProduct = products.find((p) => p.id === rev.productId);
+
+                      return (
+                        <div
+                          key={rev.id}
+                          className={`p-4 rounded-2xl border transition flex flex-col justify-between gap-3 ${
+                            rev.isApproved !== false
+                              ? 'bg-[#12141e] border-zinc-800 hover:border-zinc-700'
+                              : 'bg-zinc-950/70 border-zinc-850 opacity-75'
+                          }`}
+                        >
+                          <div className="space-y-3">
+                            {/* Product & Status Header */}
+                            <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-zinc-800/80">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {linkedProduct?.image && (
+                                  <img
+                                    src={linkedProduct.image}
+                                    alt={rev.productName}
+                                    className="w-10 h-10 rounded-lg object-cover border border-zinc-800 shrink-0"
+                                  />
+                                )}
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-white truncate">
+                                    {rev.productName}
+                                  </div>
+                                  {rev.productBazaarName && (
+                                    <div className="text-[11px] font-racing text-red-400 truncate">
+                                      Bozorda: "{rev.productBazaarName}"
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
+                                  rev.isApproved !== false
+                                    ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/70'
+                                    : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                                }`}
+                              >
+                                {rev.isApproved !== false ? "Ko'rinadi" : 'Yashirilgan'}
+                              </span>
+                            </div>
+
+                            {/* Customer Name, Rating & Date */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <div className="text-xs font-bold text-zinc-200">
+                                  {rev.customerName}
+                                </div>
+                                <div className="text-[10px] text-zinc-500 flex items-center gap-1 mt-0.5">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{new Date(rev.createdAt).toLocaleString('uz-UZ')}</span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-0.5 text-amber-400">
+                                {[1, 2, 3, 4, 5].map((st) => (
+                                  <Star
+                                    key={st}
+                                    className={`w-3.5 h-3.5 ${
+                                      st <= rev.rating
+                                        ? 'fill-amber-400 text-amber-400'
+                                        : 'text-zinc-700'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Comment or Edit Mode */}
+                            {isEditing ? (
+                              <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-700 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] text-zinc-400">Baho:</span>
+                                  <div className="flex items-center gap-1">
+                                    {[1, 2, 3, 4, 5].map((st) => (
+                                      <button
+                                        key={st}
+                                        type="button"
+                                        onClick={() => setEditReviewRating(st)}
+                                        className="p-0.5"
+                                      >
+                                        <Star
+                                          className={`w-4 h-4 ${
+                                            st <= editReviewRating
+                                              ? 'fill-amber-400 text-amber-400'
+                                              : 'text-zinc-600'
+                                          }`}
+                                        />
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <textarea
+                                  rows={2}
+                                  value={editReviewComment}
+                                  onChange={(e) => setEditReviewComment(e.target.value)}
+                                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-xs text-white focus:border-red-500 focus:outline-none"
+                                />
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingReviewId(null)}
+                                    className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-300 text-xs"
+                                  >
+                                    Bekor qilish
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = localReviews.map((item) =>
+                                        item.id === rev.id
+                                          ? {
+                                              ...item,
+                                              rating: editReviewRating,
+                                              comment: editReviewComment.trim() || item.comment,
+                                            }
+                                          : item
+                                      );
+                                      updateReviewsList(updated);
+                                      setEditingReviewId(null);
+                                      showToast('Izoh va baho yangilandi!');
+                                    }}
+                                    className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1"
+                                  >
+                                    <Save className="w-3 h-3" />
+                                    <span>Saqlash</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-2.5 rounded-xl bg-zinc-900/70 border border-zinc-800/80 text-xs text-zinc-200 leading-relaxed">
+                                "{rev.comment}"
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingReviewId(rev.id);
+                                setEditReviewComment(rev.comment);
+                                setEditReviewRating(rev.rating);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs flex items-center gap-1 transition"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Tahrirlash</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = localReviews.map((item) =>
+                                  item.id === rev.id
+                                    ? { ...item, isApproved: item.isApproved === false }
+                                    : item
+                                );
+                                updateReviewsList(updated);
+                                showToast(
+                                  rev.isApproved === false
+                                    ? "Izoh do'konda ko'rinadigan qilindi."
+                                    : "Izoh do'kondan yashirildi."
+                                );
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs flex items-center gap-1 transition"
+                            >
+                              {rev.isApproved !== false ? (
+                                <>
+                                  <EyeOff className="w-3.5 h-3.5 text-zinc-400" />
+                                  <span>Yashirish</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Ko‘rsatish</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = localReviews.filter((item) => item.id !== rev.id);
+                                updateReviewsList(updated);
+                                showToast("Izoh muvaffaqiyatli o'chirildi.");
+                              }}
+                              className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950 text-zinc-400 hover:text-red-400 border border-zinc-750 transition"
+                              title="Izohni o'chirish"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 

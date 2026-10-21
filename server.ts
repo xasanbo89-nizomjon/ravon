@@ -44,16 +44,22 @@ async function startServer() {
     const appUrl = getCleanAppUrl();
 
     if (botToken) {
-      startTelegramBotPolling({
-        botToken,
-        adminChatId,
-        appUrl,
-        getGeminiClient,
-      });
+      try {
+        startTelegramBotPolling({
+          botToken,
+          adminChatId,
+          appUrl,
+          getGeminiClient,
+        });
+      } catch (err) {
+        console.warn('[Server] Bot polling startup warning:', err);
+      }
     }
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('[Server] Fatal startup error:', err);
+});
 
 export default app;

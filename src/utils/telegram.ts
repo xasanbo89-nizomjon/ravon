@@ -69,7 +69,7 @@ export function formatOrderTelegramMessage(
   const deliveryLabel = 
     orderData.deliveryMethod === 'courier' ? '🚗 Kuryer orqali (eshikkacha)' :
     orderData.deliveryMethod === 'post' ? '📦 BTS / Fargo pochta punkti' :
-    '🏢 Sergeli moshina bozoridan olib ketish';
+    '🏢 Namangan viloyati, Uychi tumanidan olib ketish';
 
   const paymentLabel = 
     orderData.paymentMethod === 'click' ? '💳 Click Up (Online)' :
@@ -129,8 +129,8 @@ ${itemsText}
 JAMI SUMMA: ${formatUzbekSum(totalAmount)}
 HOLATI: Qabul qilindi
 ----------------------------------------
-Toshkent sh., Sergeli mashina bozori, 4-blok, 28-do'kon
-Tel: +998 (90) 123-45-67
+Manzil: Namangan viloyati, Uychi tumani (Ravon Auto Tuning)
+Tel: +998 97 524 04 01 | Telegram: @Doliyev_dilshod
 Ushbu chek faqat sizning shaxsiy xaridingiz uchun rasmiy hisoblanadi.
 ========================================`;
 }

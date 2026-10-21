@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidSyncDoc(data) {
+      return data.keys().hasAll(['updatedAt'])
+        && data.keys().hasOnly([
+          'updatedAt',
+          'products',
+          'orders',
+          'siteSettings',
+          'announcementBanner',
+          'carModels',
+          'categories',
+          'promoCodes',
+          'admins'
+        ])
+        && data.updatedAt is int
+        && (!('products' in data) || (data.products is list && data.products.size() <= 500))
+        && (!('orders' in data) || (data.orders is list && data.orders.size() <= 1000))
+        && (!('siteSettings' in data) || data.siteSettings is map)
+        && (!('announcementBanner' in data) || data.announcementBanner is map)
+        && (!('carModels' in data) || (data.carModels is list && data.carModels.size() <= 100))
+        && (!('categories' in data) || (data.categories is list && data.categories.size() <= 100))
+        && (!('promoCodes' in data) || (data.promoCodes is list && data.promoCodes.size() <= 200))
+        && (!('admins' in data) || (data.admins is list && data.admins.size() <= 50));
+    }
+
+    match /ravon_sync/{docId} {
+      allow get: if isValidId(docId);
+      allow create, update: if isValidId(docId) && isValidSyncDoc(incoming());
+    }
+
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+    }
+  }
+}

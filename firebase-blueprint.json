@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "StoreSyncState": {
+      "title": "StoreSyncState",
+      "description": "Real-time synchronized store state across phone and desktop devices.",
+      "type": "object",
+      "properties": {
+        "productsJson": {
+          "type": "string",
+          "description": "Serialized list of store products",
+          "maxLength": 900000
+        },
+        "ordersJson": {
+          "type": "string",
+          "description": "Serialized list of customer orders",
+          "maxLength": 900000
+        },
+        "siteSettingsJson": {
+          "type": "string",
+          "description": "Serialized site settings",
+          "maxLength": 50000
+        },
+        "announcementBannerJson": {
+          "type": "string",
+          "description": "Serialized announcement banner",
+          "maxLength": 20000
+        },
+        "carModelsJson": {
+          "type": "string",
+          "description": "Serialized car models list",
+          "maxLength": 20000
+        },
+        "categoriesJson": {
+          "type": "string",
+          "description": "Serialized categories list",
+          "maxLength": 20000
+        },
+        "promoCodesJson": {
+          "type": "string",
+          "description": "Serialized promo codes list",
+          "maxLength": 100000
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp in milliseconds of last update"
+        }
+      },
+      "required": ["updatedAt"]
+    }
+  },
+  "firestore": {
+    "/ravon_sync/{docId}": {
+      "schema": "StoreSyncState",
+      "description": "Main real-time synchronization document for Ravon Auto Tuning"
+    }
+  }
+}

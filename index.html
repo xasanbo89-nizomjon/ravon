@@ -19,30 +19,10 @@
   <body>
     <div id="root"></div>
 
-    <!-- Yashirin Admin Panel va Xavfsizlik Skripti (Ctrl + Shift + 7, Alt + A, 3 marta tez bosish yoki 2 soniya Long-Press) -->
+    <!-- 2-Bosqichli Xavfsiz Admin Kirish Skripti (Avval Maxfiy Kod -> Keyin Login va Parol) -->
     <script>
       (function() {
-        function isSessionRemembered() {
-          try {
-            return sessionStorage.getItem('ravon_admin_authorized') === 'true' || 
-                   sessionStorage.getItem('ravon_admin_logged') === 'true';
-          } catch (e) {
-            return false;
-          }
-        }
-
         function triggerAdminSecretAccess() {
-          // 1. Agar joriy sessiyada parol ("0606") allaqachon to'g'ri kiritilgan bo'lsa,
-          // to'g'ridan-to'g'ri admin panelni ochish
-          if (isSessionRemembered()) {
-            window.dispatchEvent(new CustomEvent('open-ravon-admin', { detail: { code: '0606' } }));
-            if (typeof window.__openRavonAdminPanel === 'function') {
-              window.__openRavonAdminPanel();
-            }
-            return;
-          }
-
-          // 2. Parol so'rovchi chiroyli React Modal oynasini ochish (brauzer prompt umuman ishlatilmaydi)
           window.dispatchEvent(new CustomEvent('open-ravon-pin-modal'));
           if (typeof window.__openSecretPinModal === 'function') {
             window.__openSecretPinModal();
@@ -51,7 +31,6 @@
 
         // Global hotkey listener: Alt + A YOKI Ctrl + Shift + 7
         function handleGlobalKeyDown(event) {
-          // 1. Alt + A (yoki Alt + a)
           if (event.altKey && (event.key === 'a' || event.key === 'A' || event.code === 'KeyA')) {
             if (event.preventDefault) event.preventDefault();
             if (event.stopPropagation) event.stopPropagation();
@@ -59,7 +38,6 @@
             return;
           }
 
-          // 2. Ctrl + Shift + 7 (yoki Cmd + Shift + 7) - Faqat SHIFT bilan birga!
           var isCtrlOrMeta = event.ctrlKey || event.metaKey;
           var isShift = event.shiftKey;
           var isKey7 = (
@@ -82,13 +60,11 @@
         window.addEventListener('keydown', handleGlobalKeyDown, true);
         document.addEventListener('keydown', handleGlobalKeyDown, true);
 
-        // Faqat aniq telefon raqami yoki logotip bosilganda (data-phone-admin yoki data-logo-admin)
         function isStrictSecretTarget(el) {
           if (!el) return false;
           return !!(el.closest && (el.closest('[data-phone-admin="true"]') || el.closest('[data-logo-admin="true"]')));
         }
 
-        // Ketma-ket 3 marta tez bosish (Triple Click / Tap) faqat logotip yoki telefon uchun
         var clickCount = 0;
         var lastClickTime = 0;
 
@@ -118,4 +94,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

@@ -52,24 +52,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const triggerSecretAdmin = () => {
     triggerHaptic('heavy');
 
-    const isAlreadyAuthorized = () => {
-      try {
-        return sessionStorage.getItem('ravon_admin_authorized') === 'true' ||
-               sessionStorage.getItem('ravon_admin_logged') === 'true';
-      } catch (e) {
-        return false;
-      }
-    };
-
-    if (isAlreadyAuthorized()) {
-      window.dispatchEvent(new CustomEvent('open-ravon-admin', { detail: { code: '0606' } }));
-      if (typeof (window as any).__openRavonAdminPanel === 'function') {
-        (window as any).__openRavonAdminPanel();
-      }
-      return;
-    }
-
-    // Parol so'rovchi chiroyli React Modal oynasini ochish (brauzer prompt umuman ishlatilmaydi)
     window.dispatchEvent(new CustomEvent('open-ravon-pin-modal'));
     if (typeof (window as any).__openSecretPinModal === 'function') {
       (window as any).__openSecretPinModal();
@@ -171,7 +153,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
               <span className="hidden md:inline-flex items-center gap-1 text-zinc-400">
                 <MapPin className="w-3.5 h-3.5 text-red-500" />
-                {siteSettings.addressBazaar}, {siteSettings.addressDetails}
+                <span>
+                  Manzil: <strong className="text-zinc-200">Namangan viloyati, Uychi tumani</strong>
+                </span>
               </span>
             </div>
 
@@ -202,10 +186,10 @@ export const Navbar: React.FC<NavbarProps> = ({
       )}
 
       {/* 3. Main Navigation Bar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand Logo - Secret Admin Trigger on Triple Click or 2s Long Press */}
         <div 
-          onClick={(e) => {
+          onClick={() => {
             onScrollToCatalog();
             handleSecretClick();
           }}
@@ -217,30 +201,30 @@ export const Navbar: React.FC<NavbarProps> = ({
           onMouseMove={handlePhoneTouchMove}
           onMouseUp={handlePhoneTouchEnd}
           data-logo-admin="true"
-          className="flex items-center gap-3 cursor-pointer group select-none"
+          className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group select-none shrink-0"
           title="RAVON AUTO"
         >
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-red-600 to-red-950 flex items-center justify-center border border-red-500/50 shadow-lg shadow-red-900/30 group-hover:scale-105 transition-transform">
-            <Gauge className="w-6 h-6 text-white group-hover:rotate-12 transition-transform duration-300" />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-red-600 to-red-950 flex items-center justify-center border border-red-500/50 shadow-lg shadow-red-900/30 group-hover:scale-105 transition-transform shrink-0">
+            <Gauge className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:rotate-12 transition-transform duration-300" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-racing text-2xl font-black italic tracking-wider text-white">
+              <span className="font-racing text-xl sm:text-2xl font-black italic tracking-wider text-white">
                 {siteSettings.brandLogoWord1}
               </span>
-              <span className="font-racing text-2xl font-black italic tracking-wider text-red-500">
+              <span className="font-racing text-xl sm:text-2xl font-black italic tracking-wider text-red-500">
                 {siteSettings.brandLogoWord2}
               </span>
             </div>
-            <div className="text-[10px] uppercase font-bold tracking-[0.25em] text-zinc-400 -mt-1">
+            <div className="text-[9px] sm:text-[10px] uppercase font-bold tracking-[0.22em] text-zinc-400 -mt-1">
               Tuning & Ehtiyot Qismlar
             </div>
           </div>
         </div>
 
-        {/* Center Search on Desktop */}
-        <div className="hidden lg:flex items-center gap-6">
-          <div className="relative w-80">
+        {/* Center Search & Nav on Desktop */}
+        <div className="hidden lg:flex items-center gap-5 flex-1 justify-center max-w-2xl mx-4">
+          <div className="relative w-full max-w-xs xl:max-w-sm">
             <input
               type="text"
               value={searchQuery}
@@ -259,7 +243,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          <nav className="flex items-center gap-1 font-medium text-sm">
+          <nav className="flex items-center gap-1 font-medium text-sm shrink-0">
             <button
               onClick={onScrollToCatalog}
               className="px-3.5 py-2 text-zinc-300 hover:text-white hover:bg-zinc-850 rounded-lg transition"
@@ -276,15 +260,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
         </div>
 
-        {/* Right Action buttons */}
-        <div className="flex items-center gap-3">
+        {/* Right Action buttons - Pushed cleanly to the right on desktop & compact on mobile */}
+        <div className="ml-auto flex items-center justify-end gap-2 sm:gap-2.5 shrink-0">
           {/* Quick AI Search Button for Mobile */}
           <button
             onClick={onScrollToAi}
-            className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-950/60 border border-red-800/60 text-red-400 text-xs font-semibold"
+            className="md:hidden shrink-0 w-auto flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-red-950/60 border border-red-800/60 text-red-400 text-xs font-semibold"
           >
-            <Sparkles className="w-3.5 h-3.5 text-red-500 animate-pulse" />
-            <span>AI Qidiruv</span>
+            <Sparkles className="w-3.5 h-3.5 text-red-500 animate-pulse shrink-0" />
+            <span className="whitespace-nowrap">AI Qidiruv</span>
           </button>
 
           {/* Cheklarim (Personal Receipts & Orders) Button */}
@@ -294,13 +278,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 triggerHaptic('light');
                 onOpenMyOrders();
               }}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-750 hover:border-zinc-700 text-xs text-zinc-300 hover:text-white transition group relative"
+              className="hidden sm:flex shrink-0 w-auto items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-750 hover:border-zinc-700 text-xs text-zinc-300 hover:text-white transition group relative"
               title="Shaxsiy buyurtmalarim va elektron cheklarim"
             >
-              <Receipt className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="font-semibold">Cheklarim</span>
+              <Receipt className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
+              <span className="font-semibold whitespace-nowrap">Cheklarim</span>
               {myOrdersCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-black flex items-center justify-center">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-black flex items-center justify-center shrink-0">
                   {myOrdersCount}
                 </span>
               )}
@@ -314,13 +298,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 triggerHaptic('light');
                 onOpenCompare();
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-750 hover:border-zinc-700 text-xs text-zinc-300 hover:text-white transition group relative"
+              className="shrink-0 w-auto flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-750 hover:border-zinc-700 text-xs text-zinc-300 hover:text-white transition group relative"
               title="Avtomobil qismlarini taqqoslash"
             >
-              <Scale className={`w-4 h-4 ${compareCount > 0 ? 'text-red-500' : 'text-zinc-400'} group-hover:scale-110 transition-transform`} />
-              <span className="hidden sm:inline font-semibold">Taqqoslash</span>
+              <Scale className={`w-4 h-4 shrink-0 ${compareCount > 0 ? 'text-red-500' : 'text-zinc-400'} group-hover:scale-110 transition-transform`} />
+              <span className="hidden sm:inline font-semibold whitespace-nowrap">Taqqoslash</span>
               {compareCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center shadow">
+                <span className="w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center shadow shrink-0">
                   {compareCount}
                 </span>
               )}
@@ -334,39 +318,39 @@ export const Navbar: React.FC<NavbarProps> = ({
                 triggerHaptic('light');
                 onOpenPromo();
               }}
-              className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition group relative ${
+              className={`hidden sm:flex shrink-0 w-auto items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition group relative ${
                 appliedPromo
                   ? 'bg-green-950/60 border-green-700/80 text-green-300 hover:text-white'
                   : 'bg-zinc-900/90 hover:bg-zinc-800 border-zinc-750 hover:border-zinc-700 text-zinc-300 hover:text-white'
               }`}
               title="Promokodni kiritish va chegirma olish"
             >
-              <Ticket className={`w-4 h-4 ${appliedPromo ? 'text-green-400' : 'text-red-400'} group-hover:scale-110 transition-transform`} />
-              <span>{appliedPromo ? `${appliedPromo.code}` : "Promokod"}</span>
+              <Ticket className={`w-4 h-4 shrink-0 ${appliedPromo ? 'text-green-400' : 'text-red-400'} group-hover:scale-110 transition-transform`} />
+              <span className="whitespace-nowrap">{appliedPromo ? `${appliedPromo.code}` : "Promokod"}</span>
               {appliedPromo && (
-                <span className="px-1.5 py-0.2 rounded bg-green-500 text-black text-[9px] font-black uppercase">
+                <span className="px-1.5 py-0.2 rounded bg-green-500 text-black text-[9px] font-black uppercase shrink-0">
                   {appliedPromo.discountType === 'percent' ? `-${appliedPromo.discountValue}%` : 'Faol'}
                 </span>
               )}
             </button>
           )}
 
-          {/* Cart Button */}
+          {/* Cart Button - Right aligned on desktop, compact non-stretching on mobile */}
           <button
             onClick={onOpenCart}
-            className="relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-medium shadow-lg shadow-red-600/25 active:scale-95 transition-all"
+            className="relative shrink-0 w-auto flex items-center justify-center gap-2 sm:gap-2.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-medium shadow-lg shadow-red-600/25 active:scale-95 transition-all"
             aria-label="Savat"
           >
-            <div className="relative">
+            <div className="relative flex items-center justify-center shrink-0">
               <ShoppingBag className="w-5 h-5" />
               {cartCount > 0 && (
-                <span className="absolute -top-2.5 -right-2.5 w-5 h-5 rounded-full bg-white text-red-600 text-xs font-black flex items-center justify-center shadow-md animate-bounce">
+                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-red-600 text-[10px] font-black flex items-center justify-center shadow-md">
                   {cartCount}
                 </span>
               )}
             </div>
-            <div className="hidden sm:flex flex-col text-left">
-              <span className="text-[11px] leading-none text-red-100 font-semibold uppercase tracking-wider">
+            <div className="hidden sm:flex flex-col text-left whitespace-nowrap">
+              <span className="text-[10px] leading-none text-red-100 font-semibold uppercase tracking-wider">
                 Savat
               </span>
               <span className="text-xs font-bold leading-tight">
@@ -378,7 +362,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Mobile Menu Toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-2 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg"
+            className="lg:hidden shrink-0 w-auto p-2 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-xl transition"
+            aria-label="Menyu"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -654,17 +639,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <MapPin className="w-4 h-4" />
                   </div>
                   <div className="min-w-0 text-xs">
-                    <div className="font-semibold text-white">{siteSettings.addressBazaar}</div>
-                    <div className="text-zinc-400 text-[11px]">{siteSettings.addressDetails}</div>
+                    <div className="font-bold text-white">Namangan viloyati, Uychi tumani</div>
+                    <div className="text-zinc-400 text-[11px]">
+                      {siteSettings.addressDetails && !siteSettings.addressDetails.toLowerCase().includes('sergeli') && !siteSettings.addressDetails.toLowerCase().includes('toshkent')
+                        ? siteSettings.addressDetails
+                        : 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning'}
+                    </div>
                     {siteSettings.mapLocationUrl && (
                       <a 
-                        href={siteSettings.mapLocationUrl} 
+                        href={
+                          siteSettings.mapLocationUrl.toLowerCase().includes('toshkent') ||
+                          siteSettings.mapLocationUrl.toLowerCase().includes('sergeli')
+                            ? 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani'
+                            : siteSettings.mapLocationUrl
+                        } 
                         target="_blank" 
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-[11px] text-red-400 hover:underline mt-1 font-medium"
                       >
                         <Navigation className="w-3 h-3" />
-                        Xaritada ko‘rish
+                        Xaritada ko‘rish (Namangan vil., Uychi tumani)
                       </a>
                     )}
                   </div>

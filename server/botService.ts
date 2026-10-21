@@ -10,10 +10,41 @@ export interface BotServiceOptions {
 let isPollingActive = false;
 let pollingAbortController: AbortController | null = null;
 let lastProcessedUpdateId = 0;
-export let activeAdminChatId: string | null = null;
+export const activeAdminChatIds = new Set<string>(['6664036733']);
 
 export const ADMIN_USERNAME = 'Doliyev_dilshod';
+export const SECOND_ADMIN_USERNAME = 'Sherzodjanovich_7';
+export const ADMIN_USERNAMES = ['Doliyev_dilshod', 'Sherzodjanovich_7'];
 export const ADMIN_PHONE = '+998 97 524 04 01';
+
+export async function sendToAllAdmins(
+  token: string,
+  primaryAdminChatId: string | undefined,
+  text: string,
+  extra: Record<string, any> = {}
+) {
+  const targets = new Set<string>();
+  if (primaryAdminChatId && primaryAdminChatId.trim()) {
+    targets.add(primaryAdminChatId.trim());
+  }
+  activeAdminChatIds.forEach((id) => {
+    if (id) targets.add(String(id).trim());
+  });
+  // Also include @Doliyev_dilshod and @Sherzodjanovich_7 in case they are channels/groups or addressable usernames
+  targets.add(`@${ADMIN_USERNAME}`);
+  targets.add(`@${SECOND_ADMIN_USERNAME}`);
+
+  const results = [];
+  for (const target of targets) {
+    try {
+      const res = await sendTelegramMessage(token, target, text, extra);
+      results.push(res);
+    } catch {
+      // ignore individual target error
+    }
+  }
+  return results;
+}
 
 export function getCleanAppUrl(customUrl?: string): string {
   const envUrl = customUrl || process.env.APP_URL || process.env.VERCEL_URL;
@@ -188,7 +219,7 @@ export async function analyzePartWithGemini(
   mimeType: string,
   userNotes?: string
 ) {
-  const systemInstruction = `Siz O'zbekistondagi eng tajribali avtomobil ehtiyot qismlari va tyuning ustalari (Sergeli moshina bozori va Farhod bozori mutaxassisi)siz.
+  const systemInstruction = `Siz O'zbekistondagi eng tajribali avtomobil ehtiyot qismlari va tyuning ustalari (Namangan viloyati, Uychi tumani "Ravon Auto Tuning" markazi mutaxassisi)siz.
 Foydalanuvchi taqdim etgan avtozapchast yoki tyuning detalining rasmini tahlil qiling.
 O'zbekistondagi mashhur avtomobillar (Gentra, Cobalt, Nexia 3, Spark, Malibu 1/2, Tracker, Onix, Damas, Labo) va bozor terminlarini yaxshi bilasiz:
 Masalan:
@@ -317,14 +348,17 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           botToken,
           chatId,
           `📞 <b>"Ravon Auto Tuning" Aloqa Ma'lumotlari:</b>\n\n` +
-          `🏢 <b>Do'kon manzili:</b> Toshkent sh., Sergeli mashina bozori, 4-blok, 18-do'kon (Ravon Tuning).\n` +
+          `🏢 <b>Do'kon manzili:</b> Namangan viloyati, Uychi tumani (Ravon Auto Tuning markazi).\n` +
           `📱 <b>Telefon / SMS:</b> ${ADMIN_PHONE}\n` +
-          `💬 <b>Menejer Telegram:</b> @${ADMIN_USERNAME}\n` +
+          `💬 <b>Adminlar Telegram:</b> @${ADMIN_USERNAME} va @${SECOND_ADMIN_USERNAME}\n` +
           `⏰ <b>Ish tartibi:</b> Har kuni 08:30 dan 20:00 gacha (dam olish kunisiz)`,
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: `💬 Menejerga yozish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }],
+                [
+                  { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
+                  { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
+                ],
                 [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }]
               ]
             }
@@ -336,9 +370,8 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           botToken,
           chatId,
           `📍 <b>Bizning Joylashuvimiz:</b>\n\n` +
-          `Toshkent shahri, Sergeli mashina bozori, asosiy avto ehtiyot qismlari qatori, 4-blok, 18-do'kon (Ravon Tuning).\n` +
-          `🚗 Mo'ljal: Sergeli avtosaloni ro'parasidagi bozor kirish darvozasi.\n` +
-          `📞 Bog'lanish: ${ADMIN_PHONE} (@${ADMIN_USERNAME})`,
+          `Namangan viloyati, Uychi tumani, Avto ehtiyot qismlar va tyuning markazi (Ravon Auto Tuning do'koni).\n` +
+          `📞 Bog'lanish: ${ADMIN_PHONE} (@${ADMIN_USERNAME} / @${SECOND_ADMIN_USERNAME})`,
           {
             reply_markup: {
               inline_keyboard: [
@@ -353,11 +386,11 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           botToken,
           chatId,
           `🚚 <b>Yetkazib Berish Shartlari:</b>\n\n` +
-          `🚗 <b>Toshkent shahri bo'ylab:</b> Tezkor Yandex / Express kuryer orqali 2-3 soatda eshikkacha yetkaziladi.\n` +
+          `🚗 <b>Namangan viloyati va Uychi tumani bo'ylab:</b> Tezkor kuryer orqali eshikkacha yetkaziladi.\n` +
           `📦 <b>O'zbekiston viloyatlari bo'ylab:</b> BTS Pochta yoki Fargo xizmatlari orqali 24 soat ichida yetkaziladi.\n` +
-          `🏢 <b>Olib ketish (Samovivoz):</b> Sergeli moshina bozoridagi do'konimizdan bepul olib ketishingiz mumkin.\n` +
+          `🏢 <b>Olib ketish (Samovivoz):</b> Namangan viloyati, Uychi tumanidagi do'konimizdan bepul olib ketishingiz mumkin.\n` +
           `💳 <b>To'lov:</b> Click, Payme yoki tovar qo'lga yetganda naqd pul.\n` +
-          `📞 Ma'lumot uchun: ${ADMIN_PHONE} (@${ADMIN_USERNAME})`,
+          `📞 Ma'lumot uchun: ${ADMIN_PHONE} (@${ADMIN_USERNAME} / @${SECOND_ADMIN_USERNAME})`,
           {
             reply_markup: {
               inline_keyboard: [
@@ -379,12 +412,14 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
 
   const customerName = [message.from?.first_name, message.from?.last_name].filter(Boolean).join(' ') || 'Hurmatli mijoz';
   const username = message.from?.username || '';
-  const isDoliyevDilshod = username.toLowerCase() === ADMIN_USERNAME.toLowerCase();
+  const isRegisteredAdminUser = ADMIN_USERNAMES.some(
+    (u) => u.toLowerCase() === username.toLowerCase()
+  );
 
-  // If message is from admin @Doliyev_dilshod, register his chatId as active admin
-  if (isDoliyevDilshod) {
-    activeAdminChatId = String(chatId);
-    console.log(`[BotService] Bosh Admin @${ADMIN_USERNAME} ulandi! Chat ID: ${chatId}`);
+  // If message is from @Doliyev_dilshod or @Sherzodjanovich_7, register their chatId in activeAdminChatIds
+  if (isRegisteredAdminUser) {
+    activeAdminChatIds.add(String(chatId));
+    console.log(`[BotService] Admin @${username} ulandi! Chat ID: ${chatId}`);
   }
 
   // 2. Handle /start command or greeting text
@@ -394,11 +429,11 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
     // Set Menu Button for this chat so the persistent "Do'konni ochish" button is activated
     setTelegramChatMenuButton(botToken, chatId, cleanAppUrl).catch(() => {});
 
-    const welcomeHtml = isDoliyevDilshod
-      ? `👑 <b>Assalomu alaykum, Dilshod aka (@${ADMIN_USERNAME})!</b>\n\n` +
+    const welcomeHtml = isRegisteredAdminUser
+      ? `👑 <b>Assalomu alaykum, Admin (@${escapeHtml(username)})!</b>\n\n` +
         `🚗 <b>"Ravon Auto Tuning"</b> tizimiga Bosh Admin sifatida xush kelibsiz!\n` +
         `✅ Ushbu chat botga muvaffaqiyatli bog'landi (Chat ID: <code>${chatId}</code>).\n` +
-        `📦 Saytdan tushgan yangi buyurtmalar va so'rovlar to'g'ridan-to'g'ri ushbu chatga keladi.\n\n` +
+        `📦 Saytdan tushgan yangi buyurtmalar va xabarlar to'g'ridan-to'g'ri ushbu chatga (@${ADMIN_USERNAME} va @${SECOND_ADMIN_USERNAME}) keladi.\n\n` +
         `<i>Do'konni Mini App sifatida ochish uchun quyidagi tugmani bosing:</i>`
       : `👋 <b>Assalomu alaykum, ${escapeHtml(customerName)}!</b>\n\n` +
         `🚗 <b>"Ravon Auto Tuning"</b> rasmiy internet do'koni va AI yordamchisiga xush kelibsiz!\n\n` +
@@ -420,11 +455,11 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           ],
           [
             { text: "📸 Rasm orqali qidirish (AI)", callback_data: "how_to_search" },
-            { text: `📞 Bog'lanish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }
+            { text: `📞 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` }
           ],
           [
-            { text: "📍 Bizning manzil", callback_data: "location_info" },
-            { text: "🚚 Yetkazib berish", callback_data: "delivery_info" }
+            { text: `📞 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` },
+            { text: "📍 Bizning manzil", callback_data: "location_info" }
           ]
         ]
       }
@@ -436,24 +471,20 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
   if (message.photo && message.photo.length > 0) {
     await sendTelegramChatAction(botToken, chatId, 'typing');
 
-    // Send immediate acknowledgment
     await sendTelegramMessage(
       botToken,
       chatId,
-      `🔍 <i>Rasm qabul qilindi. Gemini 3.8 Flash AI orqali avtomobil detali tahlil qilinmoqda, bir oz kuting...</i>`
+      `🔍 <i>Rasm qabul qilindi. AI orqali avtomobil detali tahlil qilinmoqda, bir oz kuting...</i>`
     );
 
     try {
-      // Pick highest resolution photo
       const photoItem = message.photo[message.photo.length - 1];
       const { base64, mimeType } = await downloadTelegramFile(botToken, photoItem.file_id);
 
       await sendTelegramChatAction(botToken, chatId, 'typing');
 
-      // Analyze with Gemini 3.8 Flash
       const aiResult = await analyzePartWithGemini(getGeminiClient, base64, mimeType, message.caption);
 
-      // Build customer response
       const compatibleCarsStr = (aiResult.compatibleCars || []).join(', ') || 'Barcha GM modellari';
       const searchUrl = `${appUrl}?search=${encodeURIComponent(aiResult.bazaarName || aiResult.partName || '')}`;
 
@@ -476,33 +507,30 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           inline_keyboard: [
             [{ text: `🛒 "${aiResult.bazaarName}" ni Do'kondan Ko'rish (Mini App)`, web_app: { url: searchUrl } }],
             [
-              { text: "🚀 Barcha Mahsulotlar (Mini App)", web_app: { url: appUrl } },
-              { text: "💬 Menejer bilan bog'lanish", url: "https://t.me/RavonAutoTuningUz" }
+              { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
+              { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
             ]
           ]
         }
       });
 
-      // Forward to Admin Chat ID so the manager is notified
-      if (adminChatId) {
-        const adminHtml = 
-          `⚡ <b>BOT ORQALI YANGI AI DETAL QIDIRUVI!</b>\n` +
-          `━━━━━━━━━━━━━━━━━━━━\n` +
-          `👤 <b>Mijoz:</b> ${escapeHtml(customerName)} ${username ? `(@${escapeHtml(username)})` : ''}\n` +
-          `🆔 <b>Telegram Chat ID:</b> <code>${chatId}</code>\n` +
-          (message.caption ? `💬 <b>Mijoz izohi:</b> <i>"${escapeHtml(message.caption)}"</i>\n` : '') +
-          `━━━━━━━━━━━━━━━━━━━━\n` +
-          `⚙️ <b>AI aniqlagan detal:</b>\n` +
-          `🏷 <b>Bozor laqabi:</b> <b>"${escapeHtml(aiResult.bazaarName)}"</b>\n` +
-          `📌 <b>Nomi:</b> ${escapeHtml(aiResult.partName)}\n` +
-          `🚗 <b>Mos mashinalar:</b> ${escapeHtml(compatibleCarsStr)}\n` +
-          `💵 <b>Taxminiy narx:</b> ${escapeHtml(aiResult.estimatedPriceRange)}\n` +
-          `⏰ <b>Vaqti:</b> ${new Date().toLocaleString('uz-UZ')}\n` +
-          `━━━━━━━━━━━━━━━━━━━━\n` +
-          `👉 <i>Mijoz Telegram botingizda turibdi, bevosita yozishingiz mumkin.</i>`;
+      const adminHtml = 
+        `⚡ <b>BOT ORQALI YANGI AI DETAL QIDIRUVI!</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👤 <b>Mijoz:</b> ${escapeHtml(customerName)} ${username ? `(@${escapeHtml(username)})` : ''}\n` +
+        `🆔 <b>Telegram Chat ID:</b> <code>${chatId}</code>\n` +
+        (message.caption ? `💬 <b>Mijoz izohi:</b> <i>"${escapeHtml(message.caption)}"</i>\n` : '') +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `⚙️ <b>AI aniqlagan detal:</b>\n` +
+        `🏷 <b>Bozor laqabi:</b> <b>"${escapeHtml(aiResult.bazaarName)}"</b>\n` +
+        `📌 <b>Nomi:</b> ${escapeHtml(aiResult.partName)}\n` +
+        `🚗 <b>Mos mashinalar:</b> ${escapeHtml(compatibleCarsStr)}\n` +
+        `💵 <b>Taxminiy narx:</b> ${escapeHtml(aiResult.estimatedPriceRange)}\n` +
+        `⏰ <b>Vaqti:</b> ${new Date().toLocaleString('uz-UZ')}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👨‍💼 <b>Adminlar:</b> @${ADMIN_USERNAME} | @${SECOND_ADMIN_USERNAME} (${ADMIN_PHONE})`;
 
-        await sendTelegramMessage(botToken, adminChatId, adminHtml);
-      }
+      await sendToAllAdmins(botToken, adminChatId, adminHtml);
     } catch (err: any) {
       console.error('[BotService] Error analyzing photo:', err);
       await sendTelegramMessage(
@@ -514,7 +542,10 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           reply_markup: {
             inline_keyboard: [
               [{ text: "🚀 Do'kondan qidirish (Mini App)", web_app: { url: appUrl } }],
-              [{ text: "💬 Menejerga yozish", url: "https://t.me/RavonAutoTuningUz" }]
+              [
+                { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
+                { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
+              ]
             ]
           }
         }
@@ -538,7 +569,10 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           inline_keyboard: [
             [{ text: `🔍 "${message.text.slice(0, 20)}" ni Do'konda Ko'rish`, web_app: { url: searchUrl } }],
             [{ text: "🛍 Do'konni ochish", web_app: { url: getCleanAppUrl(appUrl) } }],
-            [{ text: `💬 Menejer bilan bog'lanish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }]
+            [
+              { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
+              { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
+            ]
           ]
         }
       }
@@ -644,7 +678,7 @@ export async function dispatchOrderTelegramNotification(params: {
   const deliveryLabel = 
     order?.deliveryMethod === 'courier' ? '🚗 Kuryer orqali (eshikkacha)' :
     order?.deliveryMethod === 'post' ? '📦 BTS / Fargo pochta punkti' :
-    '🏢 Sergeli moshina bozoridan olib ketish';
+    '🏢 Namangan viloyati, Uychi tumanidan olib ketish';
 
   const paymentLabel = 
     order?.paymentMethod === 'click' ? '💳 Click Up (Online)' :
@@ -663,40 +697,33 @@ export async function dispatchOrderTelegramNotification(params: {
     return `▫️ <b>${escapeHtml(p.name || 'Detal')}</b> (${it.quantity || 1} dona) — ${formatUzbekSum((p.price || 0) * (it.quantity || 1))}`;
   }).join('\n');
 
-  // 1. FAQAT ADMINGA MAXFIY XABAR (Strictly sent only to adminChatId)
-  if (adminChatId) {
-    const adminMessage = 
-      `🔒 <b>MAXFIY XABAR (FAQAT ADMIN UCHUN)</b>\n` +
-      `🔥 <b>YANGI BUYURTMA KELDI! #RAV-${cleanOrderId}</b>\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⚠️ <i>Diqqat: Ushbu ma'lumotlar maxfiy hisoblanib, faqat ma'muriyat uchun mo'ljallangan. Boshqa mijozlarga oshkor etilmaydi.</i>\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `👤 <b>Xaridor:</b> ${escapeHtml(order?.fullName || 'Mijoz')}\n` +
-      `📞 <b>Telefon:</b> <code>${escapeHtml(order?.phone || '')}</code>\n` +
-      (order?.telegramUsername ? `💬 <b>Telegram:</b> @${escapeHtml(order.telegramUsername)}\n` : '') +
-      (order?.telegramUserId ? `🆔 <b>Telegram ID:</b> <code>${order.telegramUserId}</code> (Mini App)\n` : '') +
-      `📍 <b>Viloyat / Manzil:</b> ${escapeHtml(order?.region || '')}, ${escapeHtml(order?.cityAddress || '')}\n` +
-      `🚚 <b>Yetkazish turi:</b> ${deliveryLabel}\n` +
-      `💳 <b>To‘lov usuli:</b> ${paymentLabel}\n` +
-      (promoCodeUsed ? `🎟 <b>Promokod:</b> <code>${escapeHtml(promoCodeUsed)}</code> (Chegirma: <b>-${formatUzbekSum(discountAmount || 0)}</b>)\n` : '') +
-      (order?.notes ? `📝 <b>Izoh / Mashina yili:</b> ${escapeHtml(order.notes)}\n` : '') +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📦 <b>BUYURTMA TARKIBI (${items.length} xil detal):</b>\n` +
-      `${adminItemsList}\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `💰 <b>JAMI TO‘LOV SUMMASI:</b> <b>${formatUzbekSum(totalAmount)}</b>\n` +
-      `⏰ <b>Qabul qilingan vaqt:</b> ${new Date().toLocaleString('uz-UZ')}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `👨‍💼 <b>Mas'ul Admin:</b> @${ADMIN_USERNAME} (Tel: ${ADMIN_PHONE})\n` +
-      `✅ <i>Xaridorga shaxsiy xarid cheki taqdim etildi. Darhol bog‘lanish tavsiya etiladi.</i>`;
+  // 1. BARCHA ADMINLARGA MAXFIY XABAR (@Doliyev_dilshod va @Sherzodjanovich_7 + adminChatId)
+  const adminMessage = 
+    `🔒 <b>MAXFIY XABAR (ADMINLAR UCHUN)</b>\n` +
+    `🔥 <b>YANGI BUYURTMA KELDI! #RAV-${cleanOrderId}</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `⚠️ <i>Diqqat: Ushbu ma'lumotlar maxfiy hisoblanib, faqat ma'muriyat (@${ADMIN_USERNAME} va @${SECOND_ADMIN_USERNAME}) uchun mo'ljallangan.</i>\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 <b>Xaridor:</b> ${escapeHtml(order?.fullName || 'Mijoz')}\n` +
+    `📞 <b>Telefon:</b> <code>${escapeHtml(order?.phone || '')}</code>\n` +
+    (order?.telegramUsername ? `💬 <b>Telegram:</b> @${escapeHtml(order.telegramUsername)}\n` : '') +
+    (order?.telegramUserId ? `🆔 <b>Telegram ID:</b> <code>${order.telegramUserId}</code> (Mini App)\n` : '') +
+    `📍 <b>Viloyat / Manzil:</b> ${escapeHtml(order?.region || '')}, ${escapeHtml(order?.cityAddress || '')}\n` +
+    `🚚 <b>Yetkazish turi:</b> ${deliveryLabel}\n` +
+    `💳 <b>To‘lov usuli:</b> ${paymentLabel}\n` +
+    (promoCodeUsed ? `🎟 <b>Promokod:</b> <code>${escapeHtml(promoCodeUsed)}</code> (Chegirma: <b>-${formatUzbekSum(discountAmount || 0)}</b>)\n` : '') +
+    (order?.notes ? `📝 <b>Izoh / Mashina yili:</b> ${escapeHtml(order.notes)}\n` : '') +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📦 <b>BUYURTMA TARKIBI (${items.length} xil detal):</b>\n` +
+    `${adminItemsList}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 <b>JAMI TO‘LOV SUMMASI:</b> <b>${formatUzbekSum(totalAmount)}</b>\n` +
+    `⏰ <b>Qabul qilingan vaqt:</b> ${new Date().toLocaleString('uz-UZ')}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👨‍💼 <b>Mas'ul Adminlar:</b> @${ADMIN_USERNAME} va @${SECOND_ADMIN_USERNAME} (Tel: ${ADMIN_PHONE})\n` +
+    `✅ <i>Xaridorga shaxsiy xarid cheki taqdim etildi. Darhol bog‘lanish tavsiya etiladi.</i>`;
 
-    await sendTelegramMessage(botToken, adminChatId, adminMessage);
-
-    // If activeAdminChatId from @Doliyev_dilshod was captured and differs from adminChatId, send to him as well
-    if (activeAdminChatId && activeAdminChatId !== adminChatId) {
-      await sendTelegramMessage(botToken, activeAdminChatId, adminMessage);
-    }
-  }
+  await sendToAllAdmins(botToken, adminChatId, adminMessage);
 
   // 2. XARIDORGA FAQAT O'ZINING BUYURTMASI CHEKI (Customer only receives their personal receipt)
   if (order?.telegramUserId) {
@@ -717,14 +744,17 @@ export async function dispatchOrderTelegramNotification(params: {
       `💰 <b>JAMI TO‘LOV:</b> <b>${formatUzbekSum(totalAmount)}</b>\n` +
       `📊 <b>Holati:</b> 🟢 <b>Qabul qilindi (Kutilmoqda)</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `🔒 <i>Xavfsizlik kafolati: Ushbu chek faqat sizning shaxsiy xaridingiz uchun taqdim etildi. Shaxsiy ma'lumotlaringiz maxfiy saqlanadi va boshqa foydalanuvchilarga ko'rsatilmaydi.</i>\n\n` +
+      `📞 <b>Aloqa:</b> ${ADMIN_PHONE} | @${ADMIN_USERNAME} | @${SECOND_ADMIN_USERNAME}\n` +
       `🚗 <i>Menejerimiz yaqin daqiqalarda siz bilan aloqaga chiqadi. Xaridingiz uchun tashakkur!</i>`;
 
     const cleanAppUrl = getCleanAppUrl();
     await sendTelegramMessage(botToken, order.telegramUserId, customerReceipt, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: `💬 Menejer bilan bog'lanish (@${ADMIN_USERNAME})`, url: `https://t.me/${ADMIN_USERNAME}` }],
+          [
+            { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
+            { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
+          ],
           [{ text: "🛍 Do'konni qayta ochish", web_app: { url: cleanAppUrl } }]
         ]
       }

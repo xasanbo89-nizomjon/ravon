@@ -58,7 +58,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
   const deliveryLabel = 
     orderData?.deliveryMethod === 'courier' ? '🚗 Kuryer orqali (eshikkacha)' :
     orderData?.deliveryMethod === 'post' ? '📦 BTS / Fargo pochta punkti' :
-    '🏢 Sergeli moshina bozoridan olib ketish';
+    '🏢 Namangan viloyati, Uychi tumanidan olib ketish';
 
   const paymentLabel = 
     orderData?.paymentMethod === 'click' ? '💳 Click Up (Online)' :
@@ -115,11 +115,11 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
                   RAVON AUTO TUNING
                 </span>
                 <span className="px-2 py-0.5 rounded text-[9px] font-semibold bg-zinc-800 text-zinc-300 uppercase tracking-wider">
-                  MCHJ • SERGELI
+                  NAMANGAN • UYCHI
                 </span>
               </div>
               <div className="text-[11px] text-zinc-400 mt-0.5">
-                Sergeli moshina bozori, 4-blok, 28-do'kon • +998 (90) 123-45-67
+                Namangan viloyati, Uychi tumani • +998 97 524 04 01
               </div>
             </div>
 
