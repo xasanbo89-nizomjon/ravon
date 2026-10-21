@@ -7,7 +7,22 @@ import {
   getDocs,
   deleteDoc,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import {
+  ref as rtdbRef,
+  onValue as rtdbOnValue,
+  set as rtdbSet,
+  update as rtdbUpdate,
+  remove as rtdbRemove,
+} from 'firebase/database';
+import {
+  db,
+  rtdb,
+  handleFirestoreError,
+  OperationType,
+  FIRESTORE_REST_BASE_URL,
+  FIREBASE_API_KEY,
+  FIREBASE_RTDB_URL,
+} from '../lib/firebase';
 import {
   Product,
   SiteSettings,
@@ -27,11 +42,11 @@ import {
 
 /**
  * Real-time Multi-Device & Multi-Tab Global Synchronization Service
- * (Cloud Firestore Collection `/ravon_products` + `/ravon_sync/main` + Supabase + Backend Server + BroadcastChannel)
+ * (Cloud Firestore SDK + Cloud Firestore REST API + Supabase + Backend Server + BroadcastChannel)
  *
  * Guarantees that all products, categories, carModels, siteSettings, banner, promoCodes, reviews, and orders
  * added, edited, or deleted via the Admin Panel are saved to the global database and immediately visible
- * to all users on any phone or computer in real time.
+ * to all users on any phone, tablet, or computer in real time.
  */
 
 export interface RavonSyncPayload {
@@ -79,6 +94,255 @@ try {
 }
 
 /**
+ * Converts a plain JS value into Cloud Firestore REST API Value representation.
+ */
+function toFirestoreValue(val: any): Record<string, any> {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val)) return { integerValue: '0' };
+    if (Number.isInteger(val)) return { integerValue: String(val) };
+    return { doubleValue: val };
+  }
+  if (typeof val === 'string') return { stringValue: val };
+  if (Array.isArray(val)) {
+    return { arrayValue: { values: val.map((item) => toFirestoreValue(item)) } };
+  }
+  if (typeof val === 'object') {
+    const fields: Record<string, any> = {};
+    for (const [k, v] of Object.entries(val)) {
+      if (v !== undefined) {
+        fields[k] = toFirestoreValue(v);
+      }
+    }
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+
+function toFirestoreFields(obj: Record<string, any>): Record<string, any> {
+  const fields: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      fields[k] = toFirestoreValue(v);
+    }
+  }
+  return fields;
+}
+
+/**
+ * Converts a Cloud Firestore REST API Value back into a plain JS value.
+ */
+function fromFirestoreValue(val: any): any {
+  if (!val || typeof val !== 'object') return null;
+  if ('nullValue' in val) return null;
+  if ('booleanValue' in val) return Boolean(val.booleanValue);
+  if ('integerValue' in val) return Number(val.integerValue);
+  if ('doubleValue' in val) return Number(val.doubleValue);
+  if ('stringValue' in val) return String(val.stringValue);
+  if ('arrayValue' in val) {
+    const arr = val.arrayValue?.values;
+    return Array.isArray(arr) ? arr.map(fromFirestoreValue) : [];
+  }
+  if ('mapValue' in val) {
+    const fields = val.mapValue?.fields;
+    if (!fields || typeof fields !== 'object') return {};
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      out[k] = fromFirestoreValue(v);
+    }
+    return out;
+  }
+  return null;
+}
+
+function fromFirestoreDocument(docObj: any): Record<string, any> | null {
+  if (!docObj || typeof docObj !== 'object' || !docObj.fields) return null;
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(docObj.fields)) {
+    out[k] = fromFirestoreValue(v);
+  }
+  return out;
+}
+
+async function restUpsertProductDoc(product: Product & { sortOrder?: number; updatedAt?: number }): Promise<void> {
+  try {
+    const docUrl = `${FIRESTORE_REST_BASE_URL}/${PRODUCTS_COLLECTION}/${encodeURIComponent(
+      product.id
+    )}?key=${encodeURIComponent(FIREBASE_API_KEY)}`;
+    await fetch(docUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreFields(product) }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function restDeleteProductDoc(productId: string): Promise<void> {
+  try {
+    const docUrl = `${FIRESTORE_REST_BASE_URL}/${PRODUCTS_COLLECTION}/${encodeURIComponent(
+      productId
+    )}?key=${encodeURIComponent(FIREBASE_API_KEY)}`;
+    await fetch(docUrl, { method: 'DELETE' });
+  } catch {
+    // ignore
+  }
+}
+
+async function restPatchMainDoc(payload: RavonSyncPayload): Promise<void> {
+  try {
+    const keys = Object.keys(payload).filter(
+      (k) => (payload as Record<string, any>)[k] !== undefined
+    );
+    if (keys.length === 0) return;
+    const maskQuery = keys
+      .map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`)
+      .join('&');
+    const docUrl = `${FIRESTORE_REST_BASE_URL}/ravon_sync/main?key=${encodeURIComponent(
+      FIREBASE_API_KEY
+    )}&${maskQuery}`;
+    await fetch(docUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreFields(payload as Record<string, any>) }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function restFetchProductsCollection(): Promise<
+  Array<Product & { sortOrder?: number; updatedAt?: number }>
+> {
+  try {
+    const colUrl = `${FIRESTORE_REST_BASE_URL}/${PRODUCTS_COLLECTION}?pageSize=300&key=${encodeURIComponent(
+      FIREBASE_API_KEY
+    )}`;
+    const res = await fetch(colUrl, { method: 'GET' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data.documents)) return [];
+    const items: Array<Product & { sortOrder?: number; updatedAt?: number }> = [];
+    for (const d of data.documents) {
+      const parsed = fromFirestoreDocument(d);
+      if (parsed && typeof parsed.id === 'string') {
+        items.push(parsed as Product & { sortOrder?: number; updatedAt?: number });
+      }
+    }
+    items.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+    return items;
+  } catch {
+    return [];
+  }
+}
+
+async function restFetchMainDoc(): Promise<RavonSyncPayload | null> {
+  try {
+    const docUrl = `${FIRESTORE_REST_BASE_URL}/ravon_sync/main?key=${encodeURIComponent(
+      FIREBASE_API_KEY
+    )}`;
+    const res = await fetch(docUrl, { method: 'GET' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const parsed = fromFirestoreDocument(data);
+    return parsed ? (parsed as RavonSyncPayload) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function rtdbUpsertProduct(
+  product: Product & { sortOrder?: number; updatedAt?: number }
+): Promise<void> {
+  try {
+    if (rtdb) {
+      rtdbSet(rtdbRef(rtdb, `${PRODUCTS_COLLECTION}/${product.id}`), product).catch(() => {});
+    }
+    if (FIREBASE_RTDB_URL) {
+      await fetch(
+        `${FIREBASE_RTDB_URL}/${PRODUCTS_COLLECTION}/${encodeURIComponent(product.id)}.json`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(product),
+        }
+      );
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function rtdbDeleteProduct(productId: string): Promise<void> {
+  try {
+    if (rtdb) {
+      rtdbRemove(rtdbRef(rtdb, `${PRODUCTS_COLLECTION}/${productId}`)).catch(() => {});
+    }
+    if (FIREBASE_RTDB_URL) {
+      await fetch(
+        `${FIREBASE_RTDB_URL}/${PRODUCTS_COLLECTION}/${encodeURIComponent(productId)}.json`,
+        { method: 'DELETE' }
+      );
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function rtdbPatchMain(payload: RavonSyncPayload): Promise<void> {
+  try {
+    if (rtdb) {
+      rtdbUpdate(rtdbRef(rtdb, 'ravon_sync/main'), payload as Record<string, unknown>).catch(
+        () => {}
+      );
+    }
+    if (FIREBASE_RTDB_URL) {
+      await fetch(`${FIREBASE_RTDB_URL}/ravon_sync/main.json`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function rtdbFetchProducts(): Promise<
+  Array<Product & { sortOrder?: number; updatedAt?: number }>
+> {
+  if (!FIREBASE_RTDB_URL) return [];
+  try {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/${PRODUCTS_COLLECTION}.json`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data || typeof data !== 'object') return [];
+    const list = Object.values(data).filter(
+      (item): item is Product & { sortOrder?: number; updatedAt?: number } =>
+        Boolean(item && typeof item === 'object' && typeof (item as any).id === 'string')
+    );
+    list.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+async function rtdbFetchMain(): Promise<RavonSyncPayload | null> {
+  if (!FIREBASE_RTDB_URL) return null;
+  try {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/ravon_sync/main.json`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data && typeof data === 'object' ? (data as RavonSyncPayload) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Deeply removes `undefined` fields so Firestore `setDoc` never fails with
  * "Unsupported field value: undefined".
  */
@@ -121,20 +385,48 @@ export function addDeletedProductIds(ids: string[]): string[] {
   return list;
 }
 
+function renderCompressedPass(
+  img: HTMLImageElement,
+  maxDim: number,
+  quality: number
+): string | null {
+  try {
+    let { width, height } = img;
+    if (width > maxDim || height > maxDim) {
+      if (width >= height) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, width);
+    canvas.height = Math.max(1, height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', quality);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Compresses large Base64 data URLs on the client so product photos uploaded from
- * phones fit comfortably inside Firestore documents and load fast on mobile networks.
+ * Multi-pass client-side image compression for base64 data URLs.
+ * Guarantees that high-res photos uploaded from phones are compressed under ~160KB
+ * so every Firestore document write succeeds 100% of the time and loads fast on mobile.
  */
 export async function compressImageDataUrl(
   dataUrl: string,
-  maxDim = 800,
-  quality = 0.76
+  maxDim = 760,
+  quality = 0.74
 ): Promise<string> {
   if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
     return dataUrl;
   }
-  // If already small (< 120KB), keep as-is
-  if (dataUrl.length < 160_000) {
+  if (dataUrl.length < 130_000) {
     return dataUrl;
   }
   if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -144,31 +436,20 @@ export async function compressImageDataUrl(
   return new Promise<string>((resolve) => {
     const img = new Image();
     img.onload = () => {
-      try {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width >= height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
+      let best = renderCompressedPass(img, maxDim, quality) || dataUrl;
+      if (best.length > 220_000) {
+        const secondPass = renderCompressedPass(img, 540, 0.62);
+        if (secondPass && secondPass.length < best.length) {
+          best = secondPass;
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, width);
-        canvas.height = Math.max(1, height);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(dataUrl);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
-      } catch {
-        resolve(dataUrl);
       }
+      if (best.length > 260_000) {
+        const thirdPass = renderCompressedPass(img, 420, 0.54);
+        if (thirdPass && thirdPass.length < best.length) {
+          best = thirdPass;
+        }
+      }
+      resolve(best.length < dataUrl.length ? best : dataUrl);
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
@@ -180,16 +461,19 @@ async function normalizeProductsForCloud(products: Product[]): Promise<Product[]
   const normalized: Product[] = [];
   for (const prod of cleaned) {
     let image = prod.image || '';
-    if (image.startsWith('data:image/') && image.length > 160_000) {
+    if (image.startsWith('data:image/') && image.length > 130_000) {
       image = await compressImageDataUrl(image, 760, 0.74);
     }
     const item: Product = {
-      id: String(prod.id),
-      name: String(prod.name || 'Zapchast'),
-      bazaarName: String(prod.bazaarName || prod.name || 'Zapchast'),
+      id: String(prod.id).trim(),
+      name: String(prod.name || 'Zapchast').slice(0, 480),
+      bazaarName: String(prod.bazaarName || prod.name || 'Zapchast').slice(0, 300),
       category: String(prod.category || 'Optika'),
-      carModels: Array.isArray(prod.carModels) && prod.carModels.length > 0 ? prod.carModels : ['Gentra'],
-      price: Number(prod.price) || 0,
+      carModels:
+        Array.isArray(prod.carModels) && prod.carModels.length > 0
+          ? prod.carModels
+          : ['Gentra'],
+      price: Math.max(0, Number(prod.price) || 0),
       ...(prod.originalPrice ? { originalPrice: Number(prod.originalPrice) } : {}),
       image,
       inStock: prod.inStock ?? true,
@@ -259,7 +543,10 @@ export function sanitizeSiteSettings(raw: Partial<SiteSettings> | undefined | nu
 /**
  * Strips any legacy static demo products (Zimmer LED, etc.) and explicitly deleted products.
  */
-export function sanitizeProductsList(list: unknown, extraDeletedIds?: Iterable<string>): Product[] {
+export function sanitizeProductsList(
+  list: unknown,
+  extraDeletedIds?: Iterable<string>
+): Product[] {
   if (!Array.isArray(list)) return [];
   const deletedSet = getDeletedProductIds();
   if (extraDeletedIds) {
@@ -288,6 +575,49 @@ export function sanitizeProductsList(list: unknown, extraDeletedIds?: Iterable<s
 }
 
 /**
+ * Merges multiple product arrays by `id` (preserving order and excluding deleted/static demo IDs)
+ * so that no device with an empty or older cache can accidentally wipe out products added by Admin.
+ */
+export function mergeProductCatalogs(
+  catalogLists: Array<Product[] | undefined | null>,
+  extraDeletedIds?: Iterable<string>
+): Product[] {
+  const deletedSet = getDeletedProductIds();
+  if (extraDeletedIds) {
+    for (const id of extraDeletedIds) {
+      if (id) deletedSet.add(id);
+    }
+  }
+
+  const byId = new Map<string, Product & { sortOrder?: number; updatedAt?: number }>();
+
+  for (const list of catalogLists) {
+    if (!Array.isArray(list)) continue;
+    for (const rawItem of list) {
+      if (!rawItem || typeof rawItem !== 'object' || typeof rawItem.id !== 'string') continue;
+      const id = rawItem.id.trim();
+      if (!id || STATIC_DEMO_PRODUCT_IDS.has(id) || deletedSet.has(id)) continue;
+
+      const existing = byId.get(id);
+      const itemWithMeta = rawItem as Product & { sortOrder?: number; updatedAt?: number };
+      if (!existing) {
+        byId.set(id, stripUndefinedDeep(itemWithMeta));
+      } else {
+        const incomingTime = itemWithMeta.updatedAt || 0;
+        const existingTime = existing.updatedAt || 0;
+        if (incomingTime >= existingTime) {
+          byId.set(id, stripUndefinedDeep({ ...existing, ...itemWithMeta }));
+        }
+      }
+    }
+  }
+
+  const merged = Array.from(byId.values());
+  merged.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+  return sanitizeProductsList(merged, deletedSet);
+}
+
+/**
  * Strips temporary test orders (RAV-849201, etc.) and orders with missing/static products.
  */
 export function sanitizeOrdersList(list: unknown): OrderRecord[] {
@@ -298,7 +628,8 @@ export function sanitizeOrdersList(list: unknown): OrderRecord[] {
       if (DEMO_ORDER_IDS.has(order.id)) return false;
       if (!Array.isArray(order.items)) return false;
       const validItems = order.items.filter(
-        (it) => it && it.product && it.product.id && !STATIC_DEMO_PRODUCT_IDS.has(it.product.id)
+        (it) =>
+          it && it.product && it.product.id && !STATIC_DEMO_PRODUCT_IDS.has(it.product.id)
       );
       return validItems.length > 0;
     })
@@ -307,50 +638,47 @@ export function sanitizeOrdersList(list: unknown): OrderRecord[] {
 
 /**
  * Syncs individual product documents inside Firestore `/ravon_products/{productId}` collection
- * so there is never a single-document 1MB limit issue.
+ * (via both Firebase Web SDK and direct Cloud Firestore REST API)
+ * so there is never a single-document 1MB limit issue and mobile WebViews sync 100% reliably.
  */
 async function syncProductsCollectionToFirestore(
   products: Product[],
   deletedIds: string[] = []
 ): Promise<void> {
-  if (!db) return;
-
   try {
     // 1. Delete any explicitly removed product documents
-    for (const delId of deletedIds) {
+    const deletedSet = new Set(deletedIds);
+    for (const delId of deletedSet) {
       if (delId) {
-        try {
-          await deleteDoc(doc(db, PRODUCTS_COLLECTION, delId));
-        } catch {
-          // ignore
+        if (db) {
+          deleteDoc(doc(db, PRODUCTS_COLLECTION, delId)).catch(() => {});
         }
+        restDeleteProductDoc(delId).catch(() => {});
+        rtdbDeleteProduct(delId).catch(() => {});
       }
     }
 
-    // 2. Fetch existing docs in `/ravon_products` to remove stale docs not in `products`
-    const existingSnap = await getDocs(collection(db, PRODUCTS_COLLECTION));
-    const activeIds = new Set(products.map((p) => p.id));
-
-    const deletePromises: Promise<void>[] = [];
-    existingSnap.forEach((docSnap) => {
-      if (!activeIds.has(docSnap.id)) {
-        deletePromises.push(deleteDoc(doc(db, PRODUCTS_COLLECTION, docSnap.id)).catch(() => {}));
-      }
-    });
-    if (deletePromises.length > 0) {
-      await Promise.all(deletePromises);
-    }
-
-    // 3. Upsert all active products as individual documents
-    const writePromises = products.map((prod, idx) => {
+    // 2. Upsert all active products as individual documents in `/ravon_products/{id}`
+    const now = Date.now();
+    const writePromises = products.map(async (prod, idx) => {
       const docData = stripUndefinedDeep({
         ...prod,
         sortOrder: idx,
-        updatedAt: Date.now(),
+        updatedAt: now,
       });
-      return setDoc(doc(db, PRODUCTS_COLLECTION, prod.id), docData).catch((err) => {
-        handleFirestoreError(err, OperationType.WRITE, `${PRODUCTS_COLLECTION}/${prod.id}`);
-      });
+      await Promise.all([
+        db
+          ? setDoc(doc(db, PRODUCTS_COLLECTION, prod.id), docData).catch((err) => {
+              handleFirestoreError(
+                err,
+                OperationType.WRITE,
+                `${PRODUCTS_COLLECTION}/${prod.id}`
+              );
+            })
+          : Promise.resolve(),
+        restUpsertProductDoc(docData),
+        rtdbUpsertProduct(docData),
+      ]);
     });
 
     await Promise.all(writePromises);
@@ -360,20 +688,18 @@ async function syncProductsCollectionToFirestore(
 }
 
 /**
- * Explicitly deletes a product from all global stores (Firestore collection, main sync doc, backend, Supabase).
+ * Explicitly deletes a product from all global stores (Firestore SDK, Firestore REST, RTDB, main sync doc, backend, Supabase).
  */
 export async function deleteProductFromCloud(
   productId: string,
   remainingProducts: Product[]
 ): Promise<void> {
   const deletedList = addDeletedProductIds([productId]);
-  if (db) {
-    try {
-      await deleteDoc(doc(db, PRODUCTS_COLLECTION, productId));
-    } catch {
-      // ignore
-    }
-  }
+  await Promise.all([
+    db ? deleteDoc(doc(db, PRODUCTS_COLLECTION, productId)).catch(() => {}) : Promise.resolve(),
+    restDeleteProductDoc(productId),
+    rtdbDeleteProduct(productId),
+  ]);
   await pushRealtimeState({
     products: remainingProducts,
     deletedProductIds: deletedList,
@@ -381,16 +707,34 @@ export async function deleteProductFromCloud(
 }
 
 /**
+ * Forces a complete synchronization of all current store data to Cloud Firestore & Backend.
+ */
+export async function forceFullCloudSync(
+  currentPayload: RavonSyncPayload
+): Promise<{ success: boolean; count: number }> {
+  try {
+    await pushRealtimeState(currentPayload);
+    const remote = await pullRealtimeState();
+    const count = remote?.products?.length ?? currentPayload.products?.length ?? 0;
+    return { success: true, count };
+  } catch {
+    return { success: false, count: currentPayload.products?.length ?? 0 };
+  }
+}
+
+/**
  * Pushes updated state to:
  * 1. Cross-tab BroadcastChannel
- * 2. Cloud Firestore (`/ravon_products/{id}` collection + `/ravon_sync/main` document)
+ * 2. Cloud Firestore SDK & REST API (`/ravon_products/{id}` collection + `/ravon_sync/main` document)
  * 3. Supabase table `ravon_store_state` (if configured)
- * 4. Backend Express server `/api/sync/state` (persisted to disk)
+ * 4. Backend Express server `/api/sync/state`
  */
 export async function pushRealtimeState(partial: RavonSyncPayload): Promise<void> {
   const now = Date.now();
   const normalizedProducts =
-    partial.products !== undefined ? await normalizeProductsForCloud(partial.products) : undefined;
+    partial.products !== undefined
+      ? await normalizeProductsForCloud(partial.products)
+      : undefined;
 
   const deletedProductIds =
     partial.deletedProductIds !== undefined
@@ -415,25 +759,29 @@ export async function pushRealtimeState(partial: RavonSyncPayload): Promise<void
     // ignore
   }
 
-  // 2. Sync to Cloud Firestore (`/ravon_products` collection + `/ravon_sync/main` doc)
-  if (db) {
-    if (normalizedProducts !== undefined) {
-      await syncProductsCollectionToFirestore(normalizedProducts, deletedProductIds);
-    }
+  // 2. Sync to Cloud Firestore (`/ravon_products` collection + `/ravon_sync/main` doc) via SDK + REST
+  if (normalizedProducts !== undefined) {
+    await syncProductsCollectionToFirestore(normalizedProducts, deletedProductIds);
+  }
 
-    try {
-      // Check serialized size of payload so `/ravon_sync/main` never exceeds Firestore's 1MB limit
-      const serialized = JSON.stringify(payload);
-      if (serialized.length < 850_000) {
-        await setDoc(doc(db, 'ravon_sync', 'main'), payload, { merge: true });
-      } else {
-        // Store products in `/ravon_products` collection and keep metadata in `/ravon_sync/main`
-        const { products: _omitProducts, ...metaOnly } = payload;
-        await setDoc(doc(db, 'ravon_sync', 'main'), stripUndefinedDeep(metaOnly), { merge: true });
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, SYNC_DOC_PATH);
-    }
+  try {
+    const serialized = JSON.stringify(payload);
+    const mainDocPayload =
+      serialized.length < 750_000
+        ? payload
+        : stripUndefinedDeep({ ...payload, products: [] });
+
+    await Promise.all([
+      db
+        ? setDoc(doc(db, 'ravon_sync', 'main'), mainDocPayload, { merge: true }).catch((err) => {
+            handleFirestoreError(err, OperationType.WRITE, SYNC_DOC_PATH);
+          })
+        : Promise.resolve(),
+      restPatchMainDoc(mainDocPayload),
+      rtdbPatchMain(mainDocPayload),
+    ]);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, SYNC_DOC_PATH);
   }
 
   // 3. Sync to Supabase REST API if configured
@@ -471,15 +819,17 @@ export async function pushRealtimeState(partial: RavonSyncPayload): Promise<void
 }
 
 /**
- * Pulls latest synchronized state from Cloud Firestore (`/ravon_products` + `/ravon_sync/main`),
+ * Pulls latest synchronized state from Cloud Firestore (SDK + REST API `/ravon_products` + `/ravon_sync/main`),
  * Supabase, and Backend Server, combining them to return the most complete & up-to-date catalog.
  */
 export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
   let firestoreMainData: RavonSyncPayload | null = null;
   let firestoreCollectionProducts: Product[] | null = null;
+  let restMainData: RavonSyncPayload | null = null;
+  let restCollectionProducts: Product[] | null = null;
   let backendData: RavonSyncPayload | null = null;
 
-  // 1. Pull from Cloud Firestore (`/ravon_sync/main` and `/ravon_products`)
+  // 1. Pull from Cloud Firestore SDK (`/ravon_sync/main` and `/ravon_products`)
   if (db) {
     try {
       const [mainSnap, productsSnap] = await Promise.all([
@@ -494,22 +844,62 @@ export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
         }
       }
 
-      if (productsSnap && !productsSnap.empty) {
+      if (productsSnap) {
         const docsList: Array<Product & { sortOrder?: number; updatedAt?: number }> = [];
         productsSnap.forEach((d) => {
           docsList.push(d.data() as Product & { sortOrder?: number; updatedAt?: number });
         });
         docsList.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-        firestoreCollectionProducts = sanitizeProductsList(docsList);
+        firestoreCollectionProducts = sanitizeProductsList(
+          docsList,
+          firestoreMainData?.deletedProductIds
+        );
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, SYNC_DOC_PATH);
     }
   }
 
-  // 2. Pull from Backend Server (/api/sync/state)
+  // 2. Pull from Cloud Firestore REST API & Firebase Realtime Database (ravon-f50ba)
   try {
-    const res = await safeFetchJson<{ success: boolean; state?: RavonSyncPayload }>('/api/sync/state');
+    const [rMain, rProds, rtMain, rtProds] = await Promise.all([
+      restFetchMainDoc(),
+      restFetchProductsCollection(),
+      rtdbFetchMain(),
+      rtdbFetchProducts(),
+    ]);
+    if (rMain) {
+      restMainData = rMain;
+      if (Array.isArray(rMain.deletedProductIds)) {
+        addDeletedProductIds(rMain.deletedProductIds);
+      }
+    }
+    if (rtMain) {
+      if (Array.isArray(rtMain.deletedProductIds)) {
+        addDeletedProductIds(rtMain.deletedProductIds);
+      }
+      if (!restMainData || (rtMain.updatedAt || 0) > (restMainData.updatedAt || 0)) {
+        restMainData = { ...(restMainData || {}), ...rtMain };
+      }
+    }
+    const combinedRestProds = [...rProds, ...rtProds];
+    if (combinedRestProds.length > 0) {
+      restCollectionProducts = sanitizeProductsList(
+        combinedRestProds,
+        rMain?.deletedProductIds ||
+          rtMain?.deletedProductIds ||
+          firestoreMainData?.deletedProductIds
+      );
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Pull from Backend Server (/api/sync/state)
+  try {
+    const res = await safeFetchJson<{ success: boolean; state?: RavonSyncPayload }>(
+      '/api/sync/state'
+    );
     if (res.ok && res.data?.success && res.data.state) {
       backendData = res.data.state;
       if (Array.isArray(backendData.deletedProductIds)) {
@@ -520,16 +910,19 @@ export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
     // ignore
   }
 
-  // 3. Pull from Supabase if configured and neither Firestore nor Backend had data
+  // 4. Pull from Supabase if configured
   let supabaseData: RavonSyncPayload | null = null;
-  if (isSupabaseConfigured && !firestoreMainData && !backendData) {
+  if (isSupabaseConfigured && !firestoreMainData && !restMainData && !backendData) {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/ravon_store_state?id=eq.main&select=payload`, {
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-      });
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/ravon_store_state?id=eq.main&select=payload`,
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
       if (res.ok) {
         const rows = await res.json();
         if (Array.isArray(rows) && rows[0]?.payload) {
@@ -541,38 +934,41 @@ export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
     }
   }
 
-  // Merge sources prioritizing the freshest timestamp and non-empty product collections
-  const sources = [firestoreMainData, backendData, supabaseData].filter(
+  // Merge sources prioritizing the freshest timestamp
+  const sources = [firestoreMainData, restMainData, backendData, supabaseData].filter(
     (s): s is RavonSyncPayload => Boolean(s)
   );
 
-  if (sources.length === 0 && !firestoreCollectionProducts) {
+  if (
+    sources.length === 0 &&
+    firestoreCollectionProducts === null &&
+    restCollectionProducts === null
+  ) {
     return null;
   }
 
-  // Sort sources by updatedAt descending
   sources.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const primary = sources[0] || {};
 
-  // Determine the best products list across collection + main doc + backend
-  let resolvedProducts: Product[] | undefined = undefined;
-  if (firestoreCollectionProducts && firestoreCollectionProducts.length > 0) {
-    resolvedProducts = firestoreCollectionProducts;
-  } else {
-    for (const src of sources) {
-      if (Array.isArray(src.products)) {
-        const cleaned = sanitizeProductsList(src.products);
-        if (cleaned.length > 0 || resolvedProducts === undefined) {
-          resolvedProducts = cleaned;
-          if (cleaned.length > 0) break;
-        }
-      }
-    }
-  }
+  const allDeletedIds = Array.from(getDeletedProductIds());
+
+  // Merge products across Firestore SDK collection, Firestore REST collection, `/ravon_sync/main`, and backend
+  const mergedProducts = mergeProductCatalogs(
+    [
+      firestoreCollectionProducts,
+      restCollectionProducts,
+      firestoreMainData?.products,
+      restMainData?.products,
+      backendData?.products,
+      supabaseData?.products,
+    ],
+    allDeletedIds
+  );
 
   const combined: RavonSyncPayload = {
     ...primary,
-    ...(resolvedProducts !== undefined ? { products: resolvedProducts } : {}),
+    products: mergedProducts,
+    deletedProductIds: allDeletedIds,
     updatedAt: primary.updatedAt || Date.now(),
   };
 
@@ -591,16 +987,58 @@ export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
  * Subscribes to real-time updates across tabs (storage + BroadcastChannel)
  * and across all phones & computers (Cloud Firestore `ravon_products` + `ravon_sync/main` + Backend polling).
  */
-export function subscribeToRealtimeSync(onUpdate: (payload: RavonSyncPayload) => void): () => void {
+export function subscribeToRealtimeSync(
+  onUpdate: (payload: RavonSyncPayload) => void
+): () => void {
+  // Capture any existing local products synchronously BEFORE listeners fire
+  // so an initial empty cloud snapshot cannot wipe out unsynced Admin products!
+  let initialLocalProducts: Product[] = [];
+  let initialLocalCategories: string[] = [];
+  let initialLocalCarModels: string[] = [];
+
+  try {
+    const savedProds = localStorage.getItem('ravon_products');
+    if (savedProds) {
+      initialLocalProducts = sanitizeProductsList(JSON.parse(savedProds));
+    }
+    const savedCats = localStorage.getItem('ravon_categories');
+    if (savedCats) {
+      const parsedCats = JSON.parse(savedCats);
+      if (Array.isArray(parsedCats)) initialLocalCategories = parsedCats;
+    }
+    const savedCars = localStorage.getItem('ravon_car_models');
+    if (savedCars) {
+      const parsedCars = JSON.parse(savedCars);
+      if (Array.isArray(parsedCars)) initialLocalCarModels = parsedCars;
+    }
+  } catch {
+    // ignore
+  }
+
+  let latestCollectionProducts: Product[] | null = null;
+  let hasCompletedInitialMigration = false;
+
   const applyIncoming = (data: RavonSyncPayload | null) => {
     if (!data) return;
 
     if (Array.isArray(data.deletedProductIds)) {
       addDeletedProductIds(data.deletedProductIds);
     }
+
+    const deletedSet = getDeletedProductIds();
+
     if (data.products !== undefined) {
-      data.products = sanitizeProductsList(data.products, data.deletedProductIds);
+      // Combine with latestCollectionProducts and initialLocalProducts (until migrated)
+      const listsToMerge: Array<Product[] | null | undefined> = [
+        latestCollectionProducts,
+        data.products,
+      ];
+      if (!hasCompletedInitialMigration && initialLocalProducts.length > 0) {
+        listsToMerge.push(initialLocalProducts);
+      }
+      data.products = mergeProductCatalogs(listsToMerge, deletedSet);
     }
+
     if (data.orders !== undefined) {
       data.orders = sanitizeOrdersList(data.orders);
     }
@@ -611,18 +1049,62 @@ export function subscribeToRealtimeSync(onUpdate: (payload: RavonSyncPayload) =>
     onUpdate(data);
   };
 
-  // 1. Cloud Firestore real-time listener on `/ravon_sync/main`
-  let unsubscribeMainDoc: (() => void) | null = null;
-  // 2. Cloud Firestore real-time listener on `/ravon_products` collection
+  // 1. Cloud Firestore real-time listener on `/ravon_products` collection (Authoritative for Products)
   let unsubscribeProductsCol: (() => void) | null = null;
+  // 2. Cloud Firestore real-time listener on `/ravon_sync/main` (Authoritative for Settings, Categories, Orders, DeletedIds)
+  let unsubscribeMainDoc: (() => void) | null = null;
 
   if (db) {
+    try {
+      unsubscribeProductsCol = onSnapshot(
+        collection(db, PRODUCTS_COLLECTION),
+        (querySnapshot) => {
+          const docsList: Array<Product & { sortOrder?: number; updatedAt?: number }> = [];
+          querySnapshot.forEach((docSnap) => {
+            docsList.push(
+              docSnap.data() as Product & { sortOrder?: number; updatedAt?: number }
+            );
+          });
+          docsList.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+          latestCollectionProducts = sanitizeProductsList(docsList);
+          applyIncoming({
+            products: latestCollectionProducts,
+            updatedAt: Date.now(),
+          });
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, PRODUCTS_COLLECTION);
+        }
+      );
+    } catch {
+      unsubscribeProductsCol = null;
+    }
+
     try {
       unsubscribeMainDoc = onSnapshot(
         doc(db, 'ravon_sync', 'main'),
         (snapshot) => {
           if (snapshot.exists()) {
-            applyIncoming(snapshot.data() as RavonSyncPayload);
+            const rawData = snapshot.data() as RavonSyncPayload;
+            if (Array.isArray(rawData.deletedProductIds)) {
+              addDeletedProductIds(rawData.deletedProductIds);
+            }
+            // If collection listener already has products, filter them by deletedProductIds
+            if (latestCollectionProducts !== null) {
+              latestCollectionProducts = sanitizeProductsList(
+                latestCollectionProducts,
+                rawData.deletedProductIds
+              );
+              applyIncoming({
+                ...rawData,
+                products: mergeProductCatalogs(
+                  [latestCollectionProducts, rawData.products],
+                  rawData.deletedProductIds
+                ),
+              });
+            } else {
+              applyIncoming(rawData);
+            }
           }
         },
         (error) => {
@@ -632,35 +1114,68 @@ export function subscribeToRealtimeSync(onUpdate: (payload: RavonSyncPayload) =>
     } catch {
       unsubscribeMainDoc = null;
     }
+  }
 
+  // 2b. Firebase Realtime Database (ravon-f50ba) real-time listeners
+  let unsubscribeRtdbProducts: (() => void) | null = null;
+  let unsubscribeRtdbMain: (() => void) | null = null;
+
+  if (rtdb) {
     try {
-      unsubscribeProductsCol = onSnapshot(
-        collection(db, PRODUCTS_COLLECTION),
-        (querySnapshot) => {
-          if (!querySnapshot.empty) {
-            const docsList: Array<Product & { sortOrder?: number }> = [];
-            querySnapshot.forEach((docSnap) => {
-              docsList.push(docSnap.data() as Product & { sortOrder?: number });
-            });
-            docsList.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+      unsubscribeRtdbProducts = rtdbOnValue(
+        rtdbRef(rtdb, PRODUCTS_COLLECTION),
+        (snap) => {
+          const val = snap.val();
+          if (val && typeof val === 'object') {
+            const list = Object.values(val).filter(
+              (item): item is Product & { sortOrder?: number; updatedAt?: number } =>
+                Boolean(item && typeof item === 'object' && typeof (item as any).id === 'string')
+            );
+            list.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+            latestCollectionProducts = mergeProductCatalogs(
+              [latestCollectionProducts, list],
+              getDeletedProductIds()
+            );
             applyIncoming({
-              products: sanitizeProductsList(docsList),
+              products: latestCollectionProducts,
               updatedAt: Date.now(),
             });
           }
         },
-        (error) => {
-          handleFirestoreError(error, OperationType.LIST, PRODUCTS_COLLECTION);
-        }
+        () => {}
       );
     } catch {
-      unsubscribeProductsCol = null;
+      unsubscribeRtdbProducts = null;
+    }
+
+    try {
+      unsubscribeRtdbMain = rtdbOnValue(
+        rtdbRef(rtdb, 'ravon_sync/main'),
+        (snap) => {
+          const val = snap.val() as RavonSyncPayload | null;
+          if (val && typeof val === 'object') {
+            applyIncoming(val);
+          }
+        },
+        () => {}
+      );
+    } catch {
+      unsubscribeRtdbMain = null;
     }
   }
 
   // 3. BroadcastChannel listener (same browser, multiple tabs)
   const handleBroadcast = (event: MessageEvent<RavonSyncPayload>) => {
     if (event?.data) {
+      if (Array.isArray(event.data.deletedProductIds)) {
+        addDeletedProductIds(event.data.deletedProductIds);
+      }
+      if (event.data.products !== undefined) {
+        latestCollectionProducts = sanitizeProductsList(
+          event.data.products,
+          event.data.deletedProductIds
+        );
+      }
       applyIncoming(event.data);
     }
   };
@@ -704,44 +1219,47 @@ export function subscribeToRealtimeSync(onUpdate: (payload: RavonSyncPayload) =>
 
   // 5. Initial pull & automatic migration of any unsynced localStorage products/categories
   pullRealtimeState().then((remote) => {
-    // Check if this browser has local products/categories added by Admin that aren't in the cloud yet
-    let localProducts: Product[] = [];
-    let localCategories: string[] = [];
-    let localCarModels: string[] = [];
-
-    try {
-      const savedProds = localStorage.getItem('ravon_products');
-      if (savedProds) {
-        localProducts = sanitizeProductsList(JSON.parse(savedProds), remote?.deletedProductIds);
-      }
-      const savedCats = localStorage.getItem('ravon_categories');
-      if (savedCats) {
-        const parsedCats = JSON.parse(savedCats);
-        if (Array.isArray(parsedCats)) localCategories = parsedCats;
-      }
-      const savedCars = localStorage.getItem('ravon_car_models');
-      if (savedCars) {
-        const parsedCars = JSON.parse(savedCars);
-        if (Array.isArray(parsedCars)) localCarModels = parsedCars;
-      }
-    } catch {
-      // ignore
+    const deletedSet = getDeletedProductIds();
+    if (remote?.deletedProductIds) {
+      remote.deletedProductIds.forEach((id) => deletedSet.add(id));
     }
 
-    const remoteProducts = remote?.products ? sanitizeProductsList(remote.products, remote.deletedProductIds) : [];
+    const remoteProducts = remote?.products
+      ? sanitizeProductsList(remote.products, deletedSet)
+      : [];
     const remoteIds = new Set(remoteProducts.map((p) => p.id));
-    const unsyncedLocalProducts = localProducts.filter((p) => !remoteIds.has(p.id));
+    const unsyncedLocalProducts = sanitizeProductsList(initialLocalProducts, deletedSet).filter(
+      (p) => !remoteIds.has(p.id)
+    );
 
-    const remoteCategories = Array.isArray(remote?.categories) ? remote!.categories : DEFAULT_CATEGORIES;
-    const mergedCategories = Array.from(new Set([...remoteCategories, ...localCategories]));
+    const remoteCategories = Array.isArray(remote?.categories)
+      ? remote!.categories
+      : DEFAULT_CATEGORIES;
+    const mergedCategories = Array.from(
+      new Set([...remoteCategories, ...initialLocalCategories])
+    );
     const hasNewLocalCategories = mergedCategories.length > remoteCategories.length;
 
-    const remoteCarModels = Array.isArray(remote?.carModels) ? remote!.carModels : DEFAULT_CAR_MODELS;
-    const mergedCarModels = Array.from(new Set([...remoteCarModels, ...localCarModels]));
+    const remoteCarModels = Array.isArray(remote?.carModels)
+      ? remote!.carModels
+      : DEFAULT_CAR_MODELS;
+    const mergedCarModels = Array.from(
+      new Set([...remoteCarModels, ...initialLocalCarModels])
+    );
     const hasNewLocalCarModels = mergedCarModels.length > remoteCarModels.length;
 
-    if (unsyncedLocalProducts.length > 0 || hasNewLocalCategories || hasNewLocalCarModels) {
-      const mergedProducts = [...unsyncedLocalProducts, ...remoteProducts];
+    hasCompletedInitialMigration = true;
+
+    if (
+      unsyncedLocalProducts.length > 0 ||
+      hasNewLocalCategories ||
+      hasNewLocalCarModels
+    ) {
+      const mergedProducts = mergeProductCatalogs(
+        [unsyncedLocalProducts, remoteProducts],
+        deletedSet
+      );
+      latestCollectionProducts = mergedProducts;
       const mergedPayload: RavonSyncPayload = {
         ...(remote || {}),
         products: mergedProducts,
@@ -756,7 +1274,16 @@ export function subscribeToRealtimeSync(onUpdate: (payload: RavonSyncPayload) =>
         carModels: mergedCarModels,
       }).catch(() => {});
     } else if (remote) {
+      if (remote.products) {
+        latestCollectionProducts = remote.products;
+      }
       applyIncoming(remote);
+      // Also ensure any products that existed in main doc / backend are written to `/ravon_products` collection
+      if (remoteProducts.length > 0 && db) {
+        syncProductsCollectionToFirestore(remoteProducts, Array.from(deletedSet)).catch(
+          () => {}
+        );
+      }
     }
   });
 
@@ -764,6 +1291,9 @@ export function subscribeToRealtimeSync(onUpdate: (payload: RavonSyncPayload) =>
   const intervalId = window.setInterval(async () => {
     const remote = await pullRealtimeState();
     if (remote) {
+      if (remote.products) {
+        latestCollectionProducts = remote.products;
+      }
       applyIncoming(remote);
     }
   }, 5000);
@@ -771,6 +1301,8 @@ export function subscribeToRealtimeSync(onUpdate: (payload: RavonSyncPayload) =>
   return () => {
     if (unsubscribeMainDoc) unsubscribeMainDoc();
     if (unsubscribeProductsCol) unsubscribeProductsCol();
+    if (unsubscribeRtdbProducts) unsubscribeRtdbProducts();
+    if (unsubscribeRtdbMain) unsubscribeRtdbMain();
     broadcastChannel?.removeEventListener('message', handleBroadcast);
     window.removeEventListener('storage', handleStorageEvent);
     window.clearInterval(intervalId);

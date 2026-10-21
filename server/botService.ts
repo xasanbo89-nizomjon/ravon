@@ -329,7 +329,8 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "🚀 Do'konni Ochish (Mini App)", web_app: { url: cleanAppUrl } }]
+                [{ text: "🚀 Do'konni Ochish (Mini App)", web_app: { url: cleanAppUrl } }],
+                [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }]
               ]
             }
           }
@@ -350,7 +351,8 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
                   { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
                   { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
                 ],
-                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }]
+                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }],
+                [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }]
               ]
             }
           }
@@ -365,7 +367,8 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }]
+                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }],
+                [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }]
               ]
             }
           }
@@ -383,7 +386,8 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }]
+                [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }],
+                [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }]
               ]
             }
           }
@@ -494,6 +498,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           inline_keyboard: [
             [{ text: `🛒 "${aiResult.bazaarName}" ni Do'kondan Ko'rish (Mini App)`, web_app: { url: searchUrl } }],
             [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }],
+            [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }],
             [
               { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
               { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
@@ -530,6 +535,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           reply_markup: {
             inline_keyboard: [
               [{ text: "🚀 Do'kondan qidirish (Mini App)", web_app: { url: cleanAppUrl } }],
+              [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }],
               [
                 { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
                 { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
@@ -557,6 +563,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           inline_keyboard: [
             [{ text: `🔍 "${message.text.slice(0, 20)}" ni Do'konda Ko'rish`, web_app: { url: searchUrl } }],
             [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }],
+            [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }],
             [
               { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
               { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
@@ -582,12 +589,20 @@ export function startTelegramBotPolling(options: BotServiceOptions) {
 
   console.log('[BotService] Telegram bot long-polling started...');
 
-  // Set default persistent Mini App button ("Do'konni ochish") globally for all users
-  setTelegramChatMenuButton(options.botToken, undefined, options.appUrl).catch((err) => {
-    console.warn('[BotService] Initial setChatMenuButton error:', err);
-  });
-
   (async () => {
+    try {
+      // Clear any stale webhook so getUpdates long-polling works without 409 conflict
+      await fetch(`https://api.telegram.org/bot${options.botToken}/deleteWebhook?drop_pending_updates=false`);
+    } catch {
+      // ignore
+    }
+
+    // Set default persistent Mini App button ("Do'konni ochish") globally for all users to https://ravon-alpha.vercel.app/
+    await setTelegramChatMenuButton(options.botToken, undefined, STORE_WEBAPP_URL).catch(() => {});
+    if (options.adminChatId) {
+      await setTelegramChatMenuButton(options.botToken, options.adminChatId, STORE_WEBAPP_URL).catch(() => {});
+    }
+
     while (isPollingActive) {
       try {
         const url = `https://api.telegram.org/bot${options.botToken}/getUpdates?offset=${lastProcessedUpdateId + 1}&timeout=15&limit=10`;
@@ -735,7 +750,7 @@ export async function dispatchOrderTelegramNotification(params: {
       `📞 <b>Aloqa:</b> ${ADMIN_PHONE} | @${ADMIN_USERNAME} | @${SECOND_ADMIN_USERNAME}\n` +
       `🚗 <i>Menejerimiz yaqin daqiqalarda siz bilan aloqaga chiqadi. Xaridingiz uchun tashakkur!</i>`;
 
-    const cleanAppUrl = getCleanAppUrl();
+    const cleanAppUrl = STORE_WEBAPP_URL;
     await sendTelegramMessage(botToken, order.telegramUserId, customerReceipt, {
       reply_markup: {
         inline_keyboard: [
@@ -743,7 +758,8 @@ export async function dispatchOrderTelegramNotification(params: {
             { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
             { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
           ],
-          [{ text: "🛍 Do'konni qayta ochish", web_app: { url: cleanAppUrl } }]
+          [{ text: "🛍 Do'konni qayta ochish", web_app: { url: cleanAppUrl } }],
+          [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: cleanAppUrl }]
         ]
       }
     });

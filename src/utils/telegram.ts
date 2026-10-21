@@ -16,9 +16,23 @@ export async function sendTelegramNotification(
 
   const defaultReplyMarkup = {
     inline_keyboard: [
-      [{ text: "🛍 Do'konni ochish (Mini App)", web_app: { url: STORE_WEBAPP_URL } }]
+      [{ text: "🛍 Do'konni ochish (Mini App)", web_app: { url: STORE_WEBAPP_URL } }],
+      [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: STORE_WEBAPP_URL }]
     ]
   };
+
+  // Ensure Telegram Chat Menu Button points strictly to https://ravon-alpha.vercel.app/
+  fetch(`https://api.telegram.org/bot${token.trim()}/setChatMenuButton`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      menu_button: {
+        type: 'web_app',
+        text: "Do'konni ochish",
+        web_app: { url: STORE_WEBAPP_URL },
+      },
+    }),
+  }).catch(() => {});
 
   try {
     // 1. Try internal backend proxy first

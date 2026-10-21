@@ -442,7 +442,8 @@ app.post(['/api/telegram/send', '/telegram/send'], async (req, res) => {
 
     const defaultReplyMarkup = reply_markup || {
       inline_keyboard: [
-        [{ text: "🛍 Do'konni ochish (Mini App)", web_app: { url: STORE_WEBAPP_URL } }]
+        [{ text: "🛍 Do'konni ochish (Mini App)", web_app: { url: STORE_WEBAPP_URL } }],
+        [{ text: "🌐 Sayt orqali ko'rish (Brauzer)", url: STORE_WEBAPP_URL }]
       ]
     };
 
@@ -512,8 +513,251 @@ app.get(['/api/telegram/bot-status', '/telegram/bot-status'], async (req, res) =
   }
 });
 
-// 9. Real-time Cross-Device Sync Store (Phone <-> Computer global synchronization, persisted to disk)
+// 9. Real-time Cross-Device Sync Store (Cloud Firestore REST + Firebase RTDB + Disk Persistence)
 const SYNC_STATE_FILE = path.resolve(process.cwd(), 'store-sync-state.json');
+const CLOUD_FIREBASE_PROJECT_ID = 'attanal-arabia-cbt-f2e74';
+const CLOUD_FIRESTORE_DB_ID = 'ai-studio-remixravonautotu-7a41bc67-a10b-485e-930d-fe19d77f9568';
+const CLOUD_FIREBASE_API_KEY = 'AIzaSyBvWtb6vUjGiXFc0Ci5pbmd-yr8QFXkcWA';
+const CLOUD_FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${CLOUD_FIREBASE_PROJECT_ID}/databases/${CLOUD_FIRESTORE_DB_ID}/documents`;
+const CLOUD_FIREBASE_RTDB_URL = (
+  process.env.VITE_FIREBASE_DATABASE_URL || 'https://ravon-f50ba-default-rtdb.firebaseio.com'
+)
+  .trim()
+  .replace(/\/+$/, '');
+
+function toServerFirestoreValue(val: any): Record<string, any> {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val)) return { integerValue: '0' };
+    if (Number.isInteger(val)) return { integerValue: String(val) };
+    return { doubleValue: val };
+  }
+  if (typeof val === 'string') return { stringValue: val };
+  if (Array.isArray(val)) {
+    return { arrayValue: { values: val.map((item) => toServerFirestoreValue(item)) } };
+  }
+  if (typeof val === 'object') {
+    const fields: Record<string, any> = {};
+    for (const [k, v] of Object.entries(val)) {
+      if (v !== undefined) {
+        fields[k] = toServerFirestoreValue(v);
+      }
+    }
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+
+function toServerFirestoreFields(obj: Record<string, any>): Record<string, any> {
+  const fields: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      fields[k] = toServerFirestoreValue(v);
+    }
+  }
+  return fields;
+}
+
+function fromServerFirestoreValue(val: any): any {
+  if (!val || typeof val !== 'object') return null;
+  if ('nullValue' in val) return null;
+  if ('booleanValue' in val) return Boolean(val.booleanValue);
+  if ('integerValue' in val) return Number(val.integerValue);
+  if ('doubleValue' in val) return Number(val.doubleValue);
+  if ('stringValue' in val) return String(val.stringValue);
+  if ('arrayValue' in val) {
+    const arr = val.arrayValue?.values;
+    return Array.isArray(arr) ? arr.map(fromServerFirestoreValue) : [];
+  }
+  if ('mapValue' in val) {
+    const fields = val.mapValue?.fields;
+    if (!fields || typeof fields !== 'object') return {};
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      out[k] = fromServerFirestoreValue(v);
+    }
+    return out;
+  }
+  return null;
+}
+
+function fromServerFirestoreDoc(docObj: any): Record<string, any> | null {
+  if (!docObj || typeof docObj !== 'object' || !docObj.fields) return null;
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(docObj.fields)) {
+    out[k] = fromServerFirestoreValue(v);
+  }
+  return out;
+}
+
+async function pullStateFromCloudFirestore(): Promise<Record<string, any> | null> {
+  try {
+    const [mainRes, prodsRes, rtdbMainRes, rtdbProdsRes] = await Promise.all([
+      fetch(`${CLOUD_FIRESTORE_BASE_URL}/ravon_sync/main?key=${CLOUD_FIREBASE_API_KEY}`).catch(
+        () => null
+      ),
+      fetch(
+        `${CLOUD_FIRESTORE_BASE_URL}/ravon_products?pageSize=300&key=${CLOUD_FIREBASE_API_KEY}`
+      ).catch(() => null),
+      CLOUD_FIREBASE_RTDB_URL
+        ? fetch(`${CLOUD_FIREBASE_RTDB_URL}/ravon_sync/main.json`).catch(() => null)
+        : Promise.resolve(null),
+      CLOUD_FIREBASE_RTDB_URL
+        ? fetch(`${CLOUD_FIREBASE_RTDB_URL}/ravon_products.json`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    let mainData: Record<string, any> = {};
+    if (mainRes && mainRes.ok) {
+      const mainJson = await mainRes.json();
+      mainData = fromServerFirestoreDoc(mainJson) || {};
+    }
+    if (rtdbMainRes && rtdbMainRes.ok) {
+      const rtMainJson = await rtdbMainRes.json();
+      if (rtMainJson && typeof rtMainJson === 'object') {
+        if ((rtMainJson.updatedAt || 0) >= (mainData.updatedAt || 0)) {
+          mainData = { ...mainData, ...rtMainJson };
+        }
+      }
+    }
+
+    const colProducts: any[] = [];
+    if (prodsRes && prodsRes.ok) {
+      const prodsJson = await prodsRes.json();
+      if (Array.isArray(prodsJson.documents)) {
+        for (const d of prodsJson.documents) {
+          const parsed = fromServerFirestoreDoc(d);
+          if (parsed && typeof parsed.id === 'string') {
+            colProducts.push(parsed);
+          }
+        }
+      }
+    }
+    if (rtdbProdsRes && rtdbProdsRes.ok) {
+      const rtProdsJson = await rtdbProdsRes.json();
+      if (rtProdsJson && typeof rtProdsJson === 'object') {
+        for (const item of Object.values(rtProdsJson)) {
+          if (item && typeof item === 'object' && typeof (item as any).id === 'string') {
+            colProducts.push(item);
+          }
+        }
+      }
+    }
+    colProducts.sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+
+    if (Object.keys(mainData).length === 0 && colProducts.length === 0) {
+      return null;
+    }
+
+    const deletedSet = new Set<string>(
+      Array.isArray(mainData.deletedProductIds) ? mainData.deletedProductIds : []
+    );
+
+    const byId = new Map<string, any>();
+    const mainProds = Array.isArray(mainData.products) ? mainData.products : [];
+    for (const p of [...colProducts, ...mainProds]) {
+      if (p && typeof p.id === 'string' && !deletedSet.has(p.id)) {
+        if (!byId.has(p.id)) {
+          byId.set(p.id, p);
+        }
+      }
+    }
+
+    return {
+      ...mainData,
+      products: Array.from(byId.values()),
+      deletedProductIds: Array.from(deletedSet),
+      updatedAt: mainData.updatedAt || Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function pushStateToCloudFirestore(state: Record<string, any>): Promise<void> {
+  try {
+    const deletedIds: string[] = Array.isArray(state.deletedProductIds)
+      ? state.deletedProductIds
+      : [];
+    for (const delId of deletedIds) {
+      if (delId) {
+        fetch(
+          `${CLOUD_FIRESTORE_BASE_URL}/ravon_products/${encodeURIComponent(
+            delId
+          )}?key=${CLOUD_FIREBASE_API_KEY}`,
+          { method: 'DELETE' }
+        ).catch(() => {});
+        if (CLOUD_FIREBASE_RTDB_URL) {
+          fetch(`${CLOUD_FIREBASE_RTDB_URL}/ravon_products/${encodeURIComponent(delId)}.json`, {
+            method: 'DELETE',
+          }).catch(() => {});
+        }
+      }
+    }
+
+    if (Array.isArray(state.products)) {
+      const now = Date.now();
+      await Promise.all(
+        state.products.map((prod: any, idx: number) => {
+          if (!prod || !prod.id) return Promise.resolve();
+          const docData = { ...prod, sortOrder: idx, updatedAt: now };
+          return Promise.all([
+            fetch(
+              `${CLOUD_FIRESTORE_BASE_URL}/ravon_products/${encodeURIComponent(
+                prod.id
+              )}?key=${CLOUD_FIREBASE_API_KEY}`,
+              {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: toServerFirestoreFields(docData) }),
+              }
+            ).catch(() => {}),
+            CLOUD_FIREBASE_RTDB_URL
+              ? fetch(
+                  `${CLOUD_FIREBASE_RTDB_URL}/ravon_products/${encodeURIComponent(prod.id)}.json`,
+                  {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(docData),
+                  }
+                ).catch(() => {})
+              : Promise.resolve(),
+          ]);
+        })
+      );
+    }
+
+    const serialized = JSON.stringify(state);
+    const mainPayload =
+      serialized.length < 750_000 ? state : { ...state, products: [] };
+    const keys = Object.keys(mainPayload).filter((k) => mainPayload[k] !== undefined);
+    if (keys.length > 0) {
+      const maskQuery = keys
+        .map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`)
+        .join('&');
+      await Promise.all([
+        fetch(
+          `${CLOUD_FIRESTORE_BASE_URL}/ravon_sync/main?key=${CLOUD_FIREBASE_API_KEY}&${maskQuery}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields: toServerFirestoreFields(mainPayload) }),
+          }
+        ).catch(() => {}),
+        CLOUD_FIREBASE_RTDB_URL
+          ? fetch(`${CLOUD_FIREBASE_RTDB_URL}/ravon_sync/main.json`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(mainPayload),
+            }).catch(() => {})
+          : Promise.resolve(),
+      ]);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 function loadPersistedSyncState(): Record<string, any> {
   try {
@@ -533,14 +777,50 @@ function loadPersistedSyncState(): Record<string, any> {
 function savePersistedSyncState(state: Record<string, any>): void {
   try {
     fs.writeFileSync(SYNC_STATE_FILE, JSON.stringify(state), 'utf-8');
-  } catch (err) {
-    console.warn('[SyncStore] Could not write persisted state:', err);
+  } catch {
+    // Ignore on read-only serverless filesystems (e.g. Vercel)
   }
 }
 
 let sharedRealtimeState: Record<string, any> = loadPersistedSyncState();
 
-app.get(['/api/sync/state', '/sync/state'], (req, res) => {
+app.get(['/api/sync/state', '/sync/state'], async (req, res) => {
+  try {
+    const cloudState = await pullStateFromCloudFirestore();
+    if (cloudState) {
+      const deletedSet = new Set<string>([
+        ...(Array.isArray(sharedRealtimeState.deletedProductIds)
+          ? sharedRealtimeState.deletedProductIds
+          : []),
+        ...(Array.isArray(cloudState.deletedProductIds) ? cloudState.deletedProductIds : []),
+      ]);
+
+      const mergedProductsMap = new Map<string, any>();
+      const cloudProds = Array.isArray(cloudState.products) ? cloudState.products : [];
+      const localProds = Array.isArray(sharedRealtimeState.products)
+        ? sharedRealtimeState.products
+        : [];
+      for (const p of [...cloudProds, ...localProds]) {
+        if (p && typeof p.id === 'string' && !deletedSet.has(p.id)) {
+          if (!mergedProductsMap.has(p.id)) {
+            mergedProductsMap.set(p.id, p);
+          }
+        }
+      }
+
+      sharedRealtimeState = {
+        ...sharedRealtimeState,
+        ...cloudState,
+        products: Array.from(mergedProductsMap.values()),
+        deletedProductIds: Array.from(deletedSet),
+        updatedAt: Math.max(sharedRealtimeState.updatedAt || 0, cloudState.updatedAt || 0),
+      };
+      savePersistedSyncState(sharedRealtimeState);
+    }
+  } catch {
+    // fallback to sharedRealtimeState
+  }
+
   if (sharedRealtimeState.siteSettings) {
     sharedRealtimeState.siteSettings = {
       ...sharedRealtimeState.siteSettings,
@@ -556,7 +836,7 @@ app.get(['/api/sync/state', '/sync/state'], (req, res) => {
   });
 });
 
-app.post(['/api/sync/state', '/sync/state'], (req, res) => {
+app.post(['/api/sync/state', '/sync/state'], async (req, res) => {
   try {
     const incoming = req.body || {};
     if (incoming.siteSettings) {
@@ -578,13 +858,30 @@ app.post(['/api/sync/state', '/sync/state'], (req, res) => {
       ])
     );
 
+    const deletedSet = new Set<string>(mergedDeletedIds);
+    const mergedProductsMap = new Map<string, any>();
+    const incomingProds = Array.isArray(incoming.products)
+      ? incoming.products
+      : Array.isArray(sharedRealtimeState.products)
+      ? sharedRealtimeState.products
+      : [];
+    for (const p of incomingProds) {
+      if (p && typeof p.id === 'string' && !deletedSet.has(p.id)) {
+        mergedProductsMap.set(p.id, p);
+      }
+    }
+
     sharedRealtimeState = {
       ...sharedRealtimeState,
       ...incoming,
+      ...(incoming.products !== undefined
+        ? { products: Array.from(mergedProductsMap.values()) }
+        : {}),
       deletedProductIds: mergedDeletedIds,
       updatedAt: incoming.updatedAt || Date.now(),
     };
     savePersistedSyncState(sharedRealtimeState);
+    await pushStateToCloudFirestore(sharedRealtimeState);
 
     return res.json({
       success: true,

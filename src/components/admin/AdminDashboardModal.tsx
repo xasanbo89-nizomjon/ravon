@@ -63,7 +63,11 @@ import {
 import { formatUzbekSum } from '../../utils/formatters';
 import { sendTelegramNotification } from '../../utils/telegram';
 import { safeFetchJson, cleanFriendlyErrorMessage } from '../../utils/apiClient';
-import { compressImageDataUrl, deleteProductFromCloud } from '../../services/supabaseSync';
+import {
+  compressImageDataUrl,
+  deleteProductFromCloud,
+  forceFullCloudSync,
+} from '../../services/supabaseSync';
 import { StorePerformanceCharts } from './StorePerformanceCharts';
 
 interface AdminDashboardModalProps {
@@ -123,6 +127,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [activeTab, setActiveTab] = useState<'crm' | 'settings' | 'ai-add' | 'products' | 'banner' | 'admins' | 'promocodes' | 'reviews'>('crm');
   const [toast, setToast] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(true);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
 
   // TAB 1: Site Settings Form State
   const [tempSettings, setTempSettings] = useState<SiteSettings>(siteSettings);
@@ -271,7 +276,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     }
   };
 
-  // Fetch active Gemini status on modal open (Must be called unconditionally before any early returns)
+  // Fetch active Gemini status and ensure local products are pushed to Cloud Firestore on modal open
   useEffect(() => {
     if (isOpen) {
       safeFetchJson<{ maskedKey?: string }>('/api/gemini/status')
@@ -281,6 +286,16 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           }
         })
         .catch(() => {});
+
+      if (products.length > 0) {
+        forceFullCloudSync({
+          products,
+          categories,
+          carModels,
+          siteSettings,
+          announcementBanner,
+        }).catch(() => {});
+      }
     }
   }, [isOpen]);
 
@@ -289,6 +304,28 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleManualCloudSync = async () => {
+    setIsCloudSyncing(true);
+    try {
+      const res = await forceFullCloudSync({
+        products,
+        categories,
+        carModels,
+        siteSettings,
+        announcementBanner,
+        promoCodes: localPromoCodes,
+        reviews: localReviews,
+      });
+      if (res.success) {
+        showToast(`Cloud Baza sinxronlandi! (${res.count} ta mahsulot barcha qurilmalarda faol)`);
+      } else {
+        showToast("Sinxronlash yakunlandi!");
+      }
+    } finally {
+      setIsCloudSyncing(false);
+    }
   };
 
   // Send test Telegram message
@@ -543,13 +580,18 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     showToast(`"${name}" mahsuloti umumiy bazadan o'chirildi!`);
   };
 
-  const handleSaveProductEdit = (e: React.FormEvent) => {
+  const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
-    const updated = products.map(p => p.id === editingProduct.id ? editingProduct : p);
+    let finalImage = editingProduct.image;
+    if (finalImage && finalImage.startsWith('data:image/')) {
+      finalImage = await compressImageDataUrl(finalImage, 760, 0.74);
+    }
+    const updatedItem: Product = { ...editingProduct, image: finalImage };
+    const updated = products.map(p => p.id === updatedItem.id ? updatedItem : p);
     onUpdateProducts(updated);
     setEditingProduct(null);
-    showToast("Mahsulot muvaffaqiyatli yangilandi!");
+    showToast("Mahsulot umumiy bazada muvaffaqiyatli yangilandi!");
   };
 
   // Car models
@@ -746,6 +788,18 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleManualCloudSync}
+              disabled={isCloudSyncing}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 text-xs font-semibold flex items-center gap-1.5 transition"
+              title="Barcha mahsulotlarni Cloud Firestore bazasi bilan majburiy sinxronlash"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">
+                {isCloudSyncing ? 'Sinxronlanmoqda...' : `Cloud Baza (${products.length})`}
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}

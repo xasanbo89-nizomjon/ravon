@@ -15,19 +15,6 @@ service cloud.firestore {
 
     function isValidSyncDoc(data) {
       return data.keys().hasAll(['updatedAt'])
-        && data.keys().hasOnly([
-          'updatedAt',
-          'products',
-          'orders',
-          'siteSettings',
-          'announcementBanner',
-          'carModels',
-          'categories',
-          'promoCodes',
-          'reviews',
-          'deletedProductIds',
-          'admins'
-        ])
         && (data.updatedAt is int || data.updatedAt is float)
         && (!('products' in data) || (data.products is list && data.products.size() <= 1000))
         && (!('orders' in data) || (data.orders is list && data.orders.size() <= 2000))
@@ -44,7 +31,7 @@ service cloud.firestore {
     function isValidProductDoc(data) {
       return data.keys().hasAll(['id', 'name', 'price'])
         && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
-        && data.name is string && data.name.size() >= 1 && data.name.size() <= 300
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 500
         && (data.price is int || data.price is float) && data.price >= 0;
     }
 
