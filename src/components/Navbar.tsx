@@ -641,26 +641,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="min-w-0 text-xs">
                     <div className="font-bold text-white">Namangan viloyati, Uychi tumani</div>
                     <div className="text-zinc-400 text-[11px]">
-                      {siteSettings.addressDetails && !siteSettings.addressDetails.toLowerCase().includes('sergeli') && !siteSettings.addressDetails.toLowerCase().includes('toshkent')
-                        ? siteSettings.addressDetails
-                        : 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning'}
+                      Namangan viloyati, Uychi tumani • Ravon Auto Tuning
                     </div>
-                    {siteSettings.mapLocationUrl && (
-                      <a 
-                        href={
-                          siteSettings.mapLocationUrl.toLowerCase().includes('toshkent') ||
-                          siteSettings.mapLocationUrl.toLowerCase().includes('sergeli')
-                            ? 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani'
-                            : siteSettings.mapLocationUrl
-                        } 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] text-red-400 hover:underline mt-1 font-medium"
-                      >
-                        <Navigation className="w-3 h-3" />
-                        Xaritada ko‘rish (Namangan vil., Uychi tumani)
-                      </a>
-                    )}
+                    <a 
+                      href="https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani"
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-red-400 hover:underline mt-1 font-medium"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      Xaritada ko‘rish (Namangan viloyati, Uychi tumani)
+                    </a>
                   </div>
                 </div>
 

@@ -1,4 +1,6 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { 
@@ -6,7 +8,9 @@ import {
   dispatchOrderTelegramNotification, 
   getBotServiceStatus,
   getCleanAppUrl,
-  sendToAllAdmins
+  sendToAllAdmins,
+  setTelegramChatMenuButton,
+  STORE_WEBAPP_URL
 } from './botService.js';
 
 dotenv.config({ override: true });
@@ -426,7 +430,7 @@ app.post(['/api/orders', '/orders'], async (req, res) => {
 // 6. Telegram send proxy (forwards to both @Doliyev_dilshod and @Sherzodjanovich_7 + adminChatId)
 app.post(['/api/telegram/send', '/telegram/send'], async (req, res) => {
   try {
-    const { token, chatId, text, parseMode } = req.body;
+    const { token, chatId, text, parseMode, reply_markup } = req.body;
     const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TELEGRAM_BOT_TOKEN;
     const primaryChatId = chatId || process.env.TELEGRAM_ADMIN_CHAT_ID || DEFAULT_TELEGRAM_ADMIN_CHAT_ID;
 
@@ -434,8 +438,17 @@ app.post(['/api/telegram/send', '/telegram/send'], async (req, res) => {
       return res.status(400).json({ success: false, error: 'Token va xabar matni kiritilishi shart' });
     }
 
+    setTelegramChatMenuButton(activeToken, undefined, STORE_WEBAPP_URL).catch(() => {});
+
+    const defaultReplyMarkup = reply_markup || {
+      inline_keyboard: [
+        [{ text: "🛍 Do'konni ochish (Mini App)", web_app: { url: STORE_WEBAPP_URL } }]
+      ]
+    };
+
     const results = await sendToAllAdmins(activeToken, String(primaryChatId), text, {
       parse_mode: parseMode || 'HTML',
+      reply_markup: defaultReplyMarkup,
     });
 
     const anySuccess = results.some((r: any) => r && r.ok);
@@ -499,12 +512,44 @@ app.get(['/api/telegram/bot-status', '/telegram/bot-status'], async (req, res) =
   }
 });
 
-// 9. Real-time Cross-Device Sync Store (Phone <-> Computer synchronization)
-let sharedRealtimeState: Record<string, any> = {
-  updatedAt: 0,
-};
+// 9. Real-time Cross-Device Sync Store (Phone <-> Computer global synchronization, persisted to disk)
+const SYNC_STATE_FILE = path.resolve(process.cwd(), 'store-sync-state.json');
+
+function loadPersistedSyncState(): Record<string, any> {
+  try {
+    if (fs.existsSync(SYNC_STATE_FILE)) {
+      const raw = fs.readFileSync(SYNC_STATE_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[SyncStore] Could not read persisted state:', err);
+  }
+  return { updatedAt: 0 };
+}
+
+function savePersistedSyncState(state: Record<string, any>): void {
+  try {
+    fs.writeFileSync(SYNC_STATE_FILE, JSON.stringify(state), 'utf-8');
+  } catch (err) {
+    console.warn('[SyncStore] Could not write persisted state:', err);
+  }
+}
+
+let sharedRealtimeState: Record<string, any> = loadPersistedSyncState();
 
 app.get(['/api/sync/state', '/sync/state'], (req, res) => {
+  if (sharedRealtimeState.siteSettings) {
+    sharedRealtimeState.siteSettings = {
+      ...sharedRealtimeState.siteSettings,
+      addressCity: 'Namangan viloyati, Uychi tumani',
+      addressBazaar: 'Namangan viloyati, Uychi tumani',
+      addressDetails: 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi',
+      mapLocationUrl: 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani',
+    };
+  }
   return res.json({
     success: true,
     state: sharedRealtimeState.updatedAt > 0 ? sharedRealtimeState : null,
@@ -514,11 +559,33 @@ app.get(['/api/sync/state', '/sync/state'], (req, res) => {
 app.post(['/api/sync/state', '/sync/state'], (req, res) => {
   try {
     const incoming = req.body || {};
+    if (incoming.siteSettings) {
+      incoming.siteSettings = {
+        ...incoming.siteSettings,
+        addressCity: 'Namangan viloyati, Uychi tumani',
+        addressBazaar: 'Namangan viloyati, Uychi tumani',
+        addressDetails: 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi',
+        mapLocationUrl: 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani',
+      };
+    }
+
+    const mergedDeletedIds = Array.from(
+      new Set([
+        ...(Array.isArray(sharedRealtimeState.deletedProductIds)
+          ? sharedRealtimeState.deletedProductIds
+          : []),
+        ...(Array.isArray(incoming.deletedProductIds) ? incoming.deletedProductIds : []),
+      ])
+    );
+
     sharedRealtimeState = {
       ...sharedRealtimeState,
       ...incoming,
+      deletedProductIds: mergedDeletedIds,
       updatedAt: incoming.updatedAt || Date.now(),
     };
+    savePersistedSyncState(sharedRealtimeState);
+
     return res.json({
       success: true,
       updatedAt: sharedRealtimeState.updatedAt,

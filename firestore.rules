@@ -6,7 +6,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() >= 1 && id.size() <= 128;
     }
 
     function incoming() {
@@ -24,22 +24,39 @@ service cloud.firestore {
           'carModels',
           'categories',
           'promoCodes',
+          'reviews',
+          'deletedProductIds',
           'admins'
         ])
-        && data.updatedAt is int
-        && (!('products' in data) || (data.products is list && data.products.size() <= 500))
-        && (!('orders' in data) || (data.orders is list && data.orders.size() <= 1000))
+        && (data.updatedAt is int || data.updatedAt is float)
+        && (!('products' in data) || (data.products is list && data.products.size() <= 1000))
+        && (!('orders' in data) || (data.orders is list && data.orders.size() <= 2000))
         && (!('siteSettings' in data) || data.siteSettings is map)
         && (!('announcementBanner' in data) || data.announcementBanner is map)
-        && (!('carModels' in data) || (data.carModels is list && data.carModels.size() <= 100))
-        && (!('categories' in data) || (data.categories is list && data.categories.size() <= 100))
-        && (!('promoCodes' in data) || (data.promoCodes is list && data.promoCodes.size() <= 200))
+        && (!('carModels' in data) || (data.carModels is list && data.carModels.size() <= 200))
+        && (!('categories' in data) || (data.categories is list && data.categories.size() <= 200))
+        && (!('promoCodes' in data) || (data.promoCodes is list && data.promoCodes.size() <= 500))
+        && (!('reviews' in data) || (data.reviews is list && data.reviews.size() <= 2000))
+        && (!('deletedProductIds' in data) || (data.deletedProductIds is list && data.deletedProductIds.size() <= 2000))
         && (!('admins' in data) || (data.admins is list && data.admins.size() <= 50));
     }
 
+    function isValidProductDoc(data) {
+      return data.keys().hasAll(['id', 'name', 'price'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 300
+        && (data.price is int || data.price is float) && data.price >= 0;
+    }
+
     match /ravon_sync/{docId} {
-      allow get: if isValidId(docId);
+      allow get, list: if true;
       allow create, update: if isValidId(docId) && isValidSyncDoc(incoming());
+    }
+
+    match /ravon_products/{productId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(productId) && isValidProductDoc(incoming());
+      allow delete: if isValidId(productId);
     }
 
     match /test/{docId} {

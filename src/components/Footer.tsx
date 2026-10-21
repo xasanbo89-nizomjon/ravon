@@ -129,28 +129,19 @@ export const Footer: React.FC<FooterProps> = ({
               <div>
                 <div className="font-bold text-white">Namangan viloyati, Uychi tumani</div>
                 <div className="text-zinc-400 text-[11px]">
-                  {siteSettings.addressDetails && !siteSettings.addressDetails.toLowerCase().includes('sergeli') && !siteSettings.addressDetails.toLowerCase().includes('toshkent')
-                    ? siteSettings.addressDetails
-                    : 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi'}
+                  Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi
                 </div>
               </div>
             </div>
-            {siteSettings.mapLocationUrl && (
-              <a 
-                href={
-                  siteSettings.mapLocationUrl.toLowerCase().includes('toshkent') ||
-                  siteSettings.mapLocationUrl.toLowerCase().includes('sergeli')
-                    ? 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani'
-                    : siteSettings.mapLocationUrl
-                } 
-                target="_blank" 
-                rel="noreferrer"
-                className="text-red-400 hover:underline flex items-center gap-1 font-semibold pl-6"
-              >
-                <span>Xaritada ko‘rish (Namangan vil., Uychi tumani)</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
+            <a 
+              href="https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani"
+              target="_blank" 
+              rel="noreferrer"
+              className="text-red-400 hover:underline flex items-center gap-1 font-semibold pl-6"
+            >
+              <span>Xaritada ko‘rish (Namangan viloyati, Uychi tumani)</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
             <div className="flex items-center gap-2">
               <Phone className="w-4 h-4 text-red-500 shrink-0" />
               <a 

@@ -87,11 +87,15 @@ export function initTelegramWebApp(): boolean {
   return false;
 }
 
-export function triggerHaptic(style: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' = 'light') {
+export function triggerHaptic(
+  style: 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection' = 'light'
+) {
   try {
     const haptic = window.Telegram?.WebApp?.HapticFeedback;
     if (haptic) {
-      if (style === 'success' || style === 'error' || style === 'warning') {
+      if (style === 'selection') {
+        haptic.selectionChanged();
+      } else if (style === 'success' || style === 'error' || style === 'warning') {
         haptic.notificationOccurred(style);
       } else {
         haptic.impactOccurred(style);

@@ -63,6 +63,8 @@ import {
 import { formatUzbekSum } from '../../utils/formatters';
 import { sendTelegramNotification } from '../../utils/telegram';
 import { safeFetchJson, cleanFriendlyErrorMessage } from '../../utils/apiClient';
+import { compressImageDataUrl, deleteProductFromCloud } from '../../services/supabaseSync';
+import { StorePerformanceCharts } from './StorePerformanceCharts';
 
 interface AdminDashboardModalProps {
   isOpen: boolean;
@@ -462,19 +464,27 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      const b64 = reader.result as string;
-      setAiImage(b64);
-      setNewProduct(prev => ({ ...prev, image: b64 }));
+    reader.onload = async () => {
+      const rawB64 = reader.result as string;
+      const compressedB64 = await compressImageDataUrl(rawB64, 800, 0.76);
+      setAiImage(compressedB64);
+      setNewProduct(prev => ({ ...prev, image: compressedB64 }));
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSaveNewProduct = (e: React.FormEvent) => {
+  const handleSaveNewProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProduct.name || !newProduct.price) {
       showToast("Iltimos, mahsulot nomi va narxini to'ldiring.");
       return;
+    }
+
+    let finalImage =
+      newProduct.image ||
+      'https://images.unsplash.com/photo-1542282088-72c9c27ed0cd?auto=format&fit=crop&w=800&q=80';
+    if (finalImage.startsWith('data:image/')) {
+      finalImage = await compressImageDataUrl(finalImage, 800, 0.76);
     }
 
     const created: Product = {
@@ -484,12 +494,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       category: newProduct.category || 'Optika',
       carModels: newProduct.carModels && newProduct.carModels.length > 0 ? newProduct.carModels : ['Gentra'],
       price: Number(newProduct.price) || 0,
-      originalPrice: newProduct.originalPrice ? Number(newProduct.originalPrice) : undefined,
-      image: newProduct.image || 'https://images.unsplash.com/photo-1542282088-72c9c27ed0cd?auto=format&fit=crop&w=800&q=80',
+      ...(newProduct.originalPrice ? { originalPrice: Number(newProduct.originalPrice) } : {}),
+      image: finalImage,
       inStock: newProduct.inStock ?? true,
       rating: 5.0,
       reviewCount: 1,
-      badge: newProduct.badge || 'YANGILIK',
+      ...(newProduct.badge ? { badge: newProduct.badge } : { badge: 'YANGILIK' }),
       description: newProduct.description || '',
       specs: [
         { label: 'Mos modellar', value: (newProduct.carModels || []).join(', ') },
@@ -500,7 +510,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     };
 
     onUpdateProducts([created, ...products]);
-    showToast(`"${created.name}" katalogga qo‘shildi!`);
+    showToast(`"${created.name}" umumiy bazaga va katalogga qo‘shildi!`);
 
     setAiImage('');
     setNewProduct({
@@ -529,7 +539,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const handleDeleteProduct = (productId: string, name: string) => {
     const updated = products.filter(p => p.id !== productId);
     onUpdateProducts(updated);
-    showToast(`"${name}" mahsuloti o'chirildi!`);
+    deleteProductFromCloud(productId, updated).catch(() => {});
+    showToast(`"${name}" mahsuloti umumiy bazadan o'chirildi!`);
   };
 
   const handleSaveProductEdit = (e: React.FormEvent) => {
@@ -2851,29 +2862,32 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           {activeTab === 'crm' && (
             <div className="space-y-6">
               
+              {/* 30-Day Store Performance Charts (Recharts: Daily Order Trends & Total Revenue) */}
+              <StorePerformanceCharts orders={orders} />
+
               {/* CRM Top Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="p-4 rounded-2xl bg-[#12141e] border border-zinc-800">
                   <div className="text-xs text-zinc-400">Jami Buyurtmalar</div>
-                  <div className="text-2xl font-racing font-bold text-white mt-1">
+                  <div className="text-2xl font-racing font-bold text-white mt-1 tabular-nums">
                     {orders.length} ta
                   </div>
                 </div>
                 <div className="p-4 rounded-2xl bg-red-950/30 border border-red-900/60">
                   <div className="text-xs text-red-300">Yangi Buyurtmalar</div>
-                  <div className="text-2xl font-racing font-bold text-red-400 mt-1">
+                  <div className="text-2xl font-racing font-bold text-red-400 mt-1 tabular-nums">
                     {orders.filter(o => o.status === 'Yangi').length} ta
                   </div>
                 </div>
                 <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-900/60">
                   <div className="text-xs text-amber-300">Yetkazilmoqda</div>
-                  <div className="text-2xl font-racing font-bold text-amber-400 mt-1">
+                  <div className="text-2xl font-racing font-bold text-amber-400 mt-1 tabular-nums">
                     {orders.filter(o => o.status === 'Yetkazilmoqda').length} ta
                   </div>
                 </div>
                 <div className="p-4 rounded-2xl bg-green-950/30 border border-green-900/60">
                   <div className="text-xs text-green-300">Bajarildi</div>
-                  <div className="text-2xl font-racing font-bold text-green-400 mt-1">
+                  <div className="text-2xl font-racing font-bold text-green-400 mt-1 tabular-nums">
                     {orders.filter(o => o.status === 'Bajarildi').length} ta
                   </div>
                 </div>

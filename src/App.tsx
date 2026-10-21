@@ -285,9 +285,19 @@ export default function App() {
 
   const handleUpdateProducts = (newProducts: Product[]) => {
     const cleaned = sanitizeProductsList(newProducts);
+    const newIdSet = new Set(cleaned.map((p) => p.id));
+    const removedIds = products.filter((p) => !newIdSet.has(p.id)).map((p) => p.id);
+
     setProducts(cleaned);
-    localStorage.setItem('ravon_products', JSON.stringify(cleaned));
-    pushRealtimeState({ products: cleaned });
+    try {
+      localStorage.setItem('ravon_products', JSON.stringify(cleaned));
+    } catch (e) {
+      console.error('Failed to save products to localStorage:', e);
+    }
+    pushRealtimeState({
+      products: cleaned,
+      ...(removedIds.length > 0 ? { deletedProductIds: removedIds } : {}),
+    });
   };
 
   const handleUpdateCarModels = (newModels: string[]) => {
@@ -322,7 +332,6 @@ export default function App() {
     setReviews(newReviews);
     try {
       localStorage.setItem('ravon_product_reviews', JSON.stringify(newReviews));
-      pushRealtimeState({ reviews: newReviews });
     } catch (e) {
       console.error('Failed to save reviews:', e);
     }
@@ -349,6 +358,7 @@ export default function App() {
     try {
       localStorage.setItem('ravon_products', JSON.stringify(updatedProducts));
     } catch {}
+    pushRealtimeState({ reviews: newReviews, products: updatedProducts });
   };
 
   const handleAddReview = (
@@ -654,6 +664,18 @@ export default function App() {
     setIsSecretPinModalOpen(false);
     setIsAdminLoginOpen(false);
     setIsAdminDashboardOpen(true);
+
+    // Ensure any products/categories/settings on the admin's device are synced to the global database
+    pushRealtimeState({
+      products,
+      categories,
+      carModels,
+      siteSettings,
+      announcementBanner,
+      promoCodes,
+      reviews,
+    }).catch(() => {});
+
     showToast(`Xush kelibsiz, ${user.fullName}!`);
   };
 

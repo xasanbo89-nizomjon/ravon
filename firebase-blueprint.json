@@ -5,40 +5,41 @@
       "description": "Real-time synchronized store state across phone and desktop devices.",
       "type": "object",
       "properties": {
-        "productsJson": {
-          "type": "string",
-          "description": "Serialized list of store products",
-          "maxLength": 900000
+        "products": {
+          "type": "array",
+          "description": "Synchronized store products list"
         },
-        "ordersJson": {
-          "type": "string",
-          "description": "Serialized list of customer orders",
-          "maxLength": 900000
+        "orders": {
+          "type": "array",
+          "description": "Synchronized customer orders list"
         },
-        "siteSettingsJson": {
-          "type": "string",
-          "description": "Serialized site settings",
-          "maxLength": 50000
+        "siteSettings": {
+          "type": "object",
+          "description": "Store settings and contact details"
         },
-        "announcementBannerJson": {
-          "type": "string",
-          "description": "Serialized announcement banner",
-          "maxLength": 20000
+        "announcementBanner": {
+          "type": "object",
+          "description": "Top announcement banner configuration"
         },
-        "carModelsJson": {
-          "type": "string",
-          "description": "Serialized car models list",
-          "maxLength": 20000
+        "carModels": {
+          "type": "array",
+          "description": "Supported car models filter list"
         },
-        "categoriesJson": {
-          "type": "string",
-          "description": "Serialized categories list",
-          "maxLength": 20000
+        "categories": {
+          "type": "array",
+          "description": "Supported product categories list"
         },
-        "promoCodesJson": {
-          "type": "string",
-          "description": "Serialized promo codes list",
-          "maxLength": 100000
+        "promoCodes": {
+          "type": "array",
+          "description": "Active and inactive promo codes"
+        },
+        "reviews": {
+          "type": "array",
+          "description": "Customer product reviews and ratings"
+        },
+        "deletedProductIds": {
+          "type": "array",
+          "description": "IDs of products explicitly deleted by admin"
         },
         "updatedAt": {
           "type": "number",
@@ -46,12 +47,40 @@
         }
       },
       "required": ["updatedAt"]
+    },
+    "ProductDocument": {
+      "title": "ProductDocument",
+      "description": "Individual product record stored in global Firestore catalog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "bazaarName": { "type": "string" },
+        "category": { "type": "string" },
+        "carModels": { "type": "array" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "image": { "type": "string" },
+        "inStock": { "type": "boolean" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "badge": { "type": "string" },
+        "description": { "type": "string" },
+        "specs": { "type": "array" },
+        "tags": { "type": "array" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "name", "price"]
     }
   },
   "firestore": {
     "/ravon_sync/{docId}": {
       "schema": "StoreSyncState",
       "description": "Main real-time synchronization document for Ravon Auto Tuning"
+    },
+    "/ravon_products/{productId}": {
+      "schema": "ProductDocument",
+      "description": "Global real-time product catalog collection for Ravon Auto Tuning"
     }
   }
 }

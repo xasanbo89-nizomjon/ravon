@@ -2,6 +2,8 @@ import { CartItem, OrderForm, AiAnalysisResult } from '../types';
 import { formatUzbekSum } from './formatters';
 import { safeFetchJson, cleanFriendlyErrorMessage } from './apiClient';
 
+export const STORE_WEBAPP_URL = 'https://ravon-alpha.vercel.app/';
+
 export async function sendTelegramNotification(
   token: string,
   chatId: string,
@@ -11,6 +13,12 @@ export async function sendTelegramNotification(
   if (!token || !chatId) {
     return { success: false, error: 'Telegram Bot Token yoki Chat ID kiritilmagan.' };
   }
+
+  const defaultReplyMarkup = {
+    inline_keyboard: [
+      [{ text: "🛍 Do'konni ochish (Mini App)", web_app: { url: STORE_WEBAPP_URL } }]
+    ]
+  };
 
   try {
     // 1. Try internal backend proxy first
@@ -22,6 +30,7 @@ export async function sendTelegramNotification(
         chatId: chatId.trim(),
         text,
         parseMode,
+        reply_markup: defaultReplyMarkup,
       }),
     });
 
@@ -39,6 +48,7 @@ export async function sendTelegramNotification(
           chat_id: chatId.trim(),
           text,
           parse_mode: parseMode,
+          reply_markup: defaultReplyMarkup,
         }),
       }
     );

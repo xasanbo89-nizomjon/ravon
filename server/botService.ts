@@ -46,19 +46,10 @@ export async function sendToAllAdmins(
   return results;
 }
 
-export function getCleanAppUrl(customUrl?: string): string {
-  const envUrl = customUrl || process.env.APP_URL || process.env.VERCEL_URL;
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 5) {
-    let url = envUrl.trim();
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
-    if (url.startsWith('http://')) {
-      url = url.replace('http://', 'https://');
-    }
-    return url.replace(/\/+$/, '');
-  }
-  return 'https://ais-pre-ej5a2rtqfnecjfmxaluobw-211039395967.asia-southeast1.run.app';
+export const STORE_WEBAPP_URL = 'https://ravon-alpha.vercel.app/';
+
+export function getCleanAppUrl(_customUrl?: string): string {
+  return STORE_WEBAPP_URL;
 }
 
 /**
@@ -67,10 +58,10 @@ export function getCleanAppUrl(customUrl?: string): string {
 export async function setTelegramChatMenuButton(
   token: string,
   chatId?: string | number,
-  webAppUrl?: string
+  _webAppUrl?: string
 ) {
   try {
-    const url = getCleanAppUrl(webAppUrl);
+    const url = STORE_WEBAPP_URL;
     const body: any = {
       menu_button: {
         type: 'web_app',
@@ -316,7 +307,8 @@ Rasmdagi detalni aniqlab, quyidagi JSON formatida javob bering:
  * Handle incoming Telegram Update
  */
 export async function handleTelegramUpdate(update: any, options: BotServiceOptions) {
-  const { botToken, adminChatId, appUrl, getGeminiClient } = options;
+  const { botToken, adminChatId, getGeminiClient } = options;
+  const cleanAppUrl = STORE_WEBAPP_URL;
   if (!update) return;
 
   // 1. Callback query
@@ -337,13 +329,12 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           {
             reply_markup: {
               inline_keyboard: [
-                [{ text: "🚀 Do'konni Ochish (Mini App)", web_app: { url: appUrl } }]
+                [{ text: "🚀 Do'konni Ochish (Mini App)", web_app: { url: cleanAppUrl } }]
               ]
             }
           }
         );
       } else if (data === 'contact_info') {
-        const cleanAppUrl = getCleanAppUrl(appUrl);
         await sendTelegramMessage(
           botToken,
           chatId,
@@ -365,7 +356,6 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           }
         );
       } else if (data === 'location_info') {
-        const cleanAppUrl = getCleanAppUrl(appUrl);
         await sendTelegramMessage(
           botToken,
           chatId,
@@ -381,7 +371,6 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
           }
         );
       } else if (data === 'delivery_info') {
-        const cleanAppUrl = getCleanAppUrl(appUrl);
         await sendTelegramMessage(
           botToken,
           chatId,
@@ -424,9 +413,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
 
   // 2. Handle /start command or greeting text
   if (message.text && (message.text.startsWith('/start') || message.text.startsWith('/help') || message.text.toLowerCase() === 'salom')) {
-    const cleanAppUrl = getCleanAppUrl(appUrl);
-
-    // Set Menu Button for this chat so the persistent "Do'konni ochish" button is activated
+    // Set Menu Button for this chat so the persistent "Do'konni ochish" button is activated with https://ravon-alpha.vercel.app/
     setTelegramChatMenuButton(botToken, chatId, cleanAppUrl).catch(() => {});
 
     const welcomeHtml = isRegisteredAdminUser
@@ -486,7 +473,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
       const aiResult = await analyzePartWithGemini(getGeminiClient, base64, mimeType, message.caption);
 
       const compatibleCarsStr = (aiResult.compatibleCars || []).join(', ') || 'Barcha GM modellari';
-      const searchUrl = `${appUrl}?search=${encodeURIComponent(aiResult.bazaarName || aiResult.partName || '')}`;
+      const searchUrl = `${cleanAppUrl}?search=${encodeURIComponent(aiResult.bazaarName || aiResult.partName || '')}`;
 
       const replyHtml = 
         `🔍 <b>AI ZAPCHAST TAHLILI NATIJASI:</b>\n` +
@@ -506,6 +493,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
         reply_markup: {
           inline_keyboard: [
             [{ text: `🛒 "${aiResult.bazaarName}" ni Do'kondan Ko'rish (Mini App)`, web_app: { url: searchUrl } }],
+            [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }],
             [
               { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
               { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
@@ -541,7 +529,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
         {
           reply_markup: {
             inline_keyboard: [
-              [{ text: "🚀 Do'kondan qidirish (Mini App)", web_app: { url: appUrl } }],
+              [{ text: "🚀 Do'kondan qidirish (Mini App)", web_app: { url: cleanAppUrl } }],
               [
                 { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
                 { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
@@ -556,7 +544,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
 
   // 4. Fallback for text messages
   if (message.text) {
-    const searchUrl = `${appUrl}?search=${encodeURIComponent(message.text.trim())}`;
+    const searchUrl = `${cleanAppUrl}?search=${encodeURIComponent(message.text.trim())}`;
     await sendTelegramMessage(
       botToken,
       chatId,
@@ -568,7 +556,7 @@ export async function handleTelegramUpdate(update: any, options: BotServiceOptio
         reply_markup: {
           inline_keyboard: [
             [{ text: `🔍 "${message.text.slice(0, 20)}" ni Do'konda Ko'rish`, web_app: { url: searchUrl } }],
-            [{ text: "🛍 Do'konni ochish", web_app: { url: getCleanAppUrl(appUrl) } }],
+            [{ text: "🛍 Do'konni ochish", web_app: { url: cleanAppUrl } }],
             [
               { text: `💬 @${ADMIN_USERNAME}`, url: `https://t.me/${ADMIN_USERNAME}` },
               { text: `💬 @${SECOND_ADMIN_USERNAME}`, url: `https://t.me/${SECOND_ADMIN_USERNAME}` }
