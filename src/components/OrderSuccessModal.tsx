@@ -119,7 +119,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
                 </span>
               </div>
               <div className="text-[11px] text-zinc-400 mt-0.5">
-                Namangan viloyati, Uychi tumani • +998 97 524 04 01
+                Namangan viloyati, Uychi tumani • +998 (95) 463-37-36
               </div>
             </div>
 

@@ -15,7 +15,7 @@ export const activeAdminChatIds = new Set<string>(['6664036733']);
 export const ADMIN_USERNAME = 'Doliyev_dilshod';
 export const SECOND_ADMIN_USERNAME = 'Sherzodjanovich_7';
 export const ADMIN_USERNAMES = ['Doliyev_dilshod', 'Sherzodjanovich_7'];
-export const ADMIN_PHONE = '+998 97 524 04 01';
+export const ADMIN_PHONE = '+998 (95) 463-37-36';
 
 export async function sendToAllAdmins(
   token: string,

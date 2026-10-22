@@ -53,6 +53,7 @@ export interface RavonSyncPayload {
   products?: Product[];
   orders?: OrderRecord[];
   siteSettings?: SiteSettings;
+  settingsUpdatedAt?: number;
   announcementBanner?: AnnouncementBanner;
   carModels?: string[];
   categories?: string[];
@@ -82,6 +83,24 @@ const CHANNEL_NAME = 'ravon_realtime_sync_v1';
 const SYNC_DOC_PATH = 'ravon_sync/main';
 const PRODUCTS_COLLECTION = 'ravon_products';
 const DELETED_IDS_STORAGE_KEY = 'ravon_deleted_product_ids';
+const SETTINGS_UPDATED_AT_KEY = 'ravon_settings_updated_at';
+
+export function getLocalSettingsUpdatedAt(): number {
+  try {
+    const raw = localStorage.getItem(SETTINGS_UPDATED_AT_KEY);
+    return raw ? Number(raw) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function setLocalSettingsUpdatedAt(ts: number): void {
+  try {
+    localStorage.setItem(SETTINGS_UPDATED_AT_KEY, String(ts));
+  } catch {
+    // ignore
+  }
+}
 
 let broadcastChannel: BroadcastChannel | null = null;
 
@@ -297,13 +316,31 @@ async function rtdbPatchMain(payload: RavonSyncPayload): Promise<void> {
       rtdbUpdate(rtdbRef(rtdb, 'ravon_sync/main'), payload as Record<string, unknown>).catch(
         () => {}
       );
+      if (payload.siteSettings) {
+        rtdbSet(rtdbRef(rtdb, 'ravon_settings'), {
+          siteSettings: payload.siteSettings,
+          settingsUpdatedAt: payload.settingsUpdatedAt || payload.updatedAt || Date.now(),
+        }).catch(() => {});
+      }
     }
     if (FIREBASE_RTDB_URL) {
-      await fetch(`${FIREBASE_RTDB_URL}/ravon_sync/main.json`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      await Promise.all([
+        fetch(`${FIREBASE_RTDB_URL}/ravon_sync/main.json`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).catch(() => {}),
+        payload.siteSettings
+          ? fetch(`${FIREBASE_RTDB_URL}/ravon_settings.json`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                siteSettings: payload.siteSettings,
+                settingsUpdatedAt: payload.settingsUpdatedAt || payload.updatedAt || Date.now(),
+              }),
+            }).catch(() => {})
+          : Promise.resolve(),
+      ]);
     }
   } catch {
     // ignore
@@ -333,10 +370,35 @@ async function rtdbFetchProducts(): Promise<
 async function rtdbFetchMain(): Promise<RavonSyncPayload | null> {
   if (!FIREBASE_RTDB_URL) return null;
   try {
-    const res = await fetch(`${FIREBASE_RTDB_URL}/ravon_sync/main.json`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data && typeof data === 'object' ? (data as RavonSyncPayload) : null;
+    const [mainRes, settingsRes] = await Promise.all([
+      fetch(`${FIREBASE_RTDB_URL}/ravon_sync/main.json`).catch(() => null),
+      fetch(`${FIREBASE_RTDB_URL}/ravon_settings.json`).catch(() => null),
+    ]);
+    let data: RavonSyncPayload | null = null;
+    if (mainRes && mainRes.ok) {
+      const parsed = await mainRes.json();
+      if (parsed && typeof parsed === 'object') {
+        data = parsed as RavonSyncPayload;
+      }
+    }
+    if (settingsRes && settingsRes.ok) {
+      const settingsDoc = await settingsRes.json();
+      if (settingsDoc && typeof settingsDoc === 'object' && settingsDoc.siteSettings) {
+        const sTs = Number(settingsDoc.settingsUpdatedAt) || 0;
+        const mTs = Number(data?.settingsUpdatedAt || data?.updatedAt) || 0;
+        if (!data) {
+          data = {
+            siteSettings: settingsDoc.siteSettings,
+            settingsUpdatedAt: sTs,
+            updatedAt: sTs,
+          };
+        } else if (sTs >= mTs) {
+          data.siteSettings = settingsDoc.siteSettings;
+          data.settingsUpdatedAt = sTs;
+        }
+      }
+    }
+    return data;
   } catch {
     return null;
   }
@@ -490,7 +552,8 @@ async function normalizeProductsForCloud(products: Product[]): Promise<Product[]
 }
 
 /**
- * Ensures siteSettings always enforces "Namangan viloyati, Uychi tumani".
+ * Ensures siteSettings preserves all Admin edits (phones, addresses, social links)
+ * while migrating any legacy Toshkent/Sergeli address or old demo phone if ever encountered.
  */
 export function sanitizeSiteSettings(raw: Partial<SiteSettings> | undefined | null): {
   settings: SiteSettings;
@@ -500,43 +563,114 @@ export function sanitizeSiteSettings(raw: Partial<SiteSettings> | undefined | nu
     return { settings: { ...DEFAULT_SITE_SETTINGS }, wasModified: true };
   }
 
-  const isCorrectCity = raw.addressCity === 'Namangan viloyati, Uychi tumani';
-  const isCorrectDetails =
-    typeof raw.addressDetails === 'string' &&
-    raw.addressDetails.toLowerCase().includes('namangan') &&
-    raw.addressDetails.toLowerCase().includes('uychi');
-  const isCorrectMap =
-    typeof raw.mapLocationUrl === 'string' &&
-    raw.mapLocationUrl.toLowerCase().includes('namangan');
+  let wasModified = false;
 
-  const hasLegacyAddr = !isCorrectCity || !isCorrectDetails || !isCorrectMap;
+  const isLegacyTashkent = (val?: string) => {
+    if (!val || typeof val !== 'string') return false;
+    const lower = val.toLowerCase();
+    return lower.includes('toshkent') || lower.includes('sergeli');
+  };
 
-  const hasLegacyPhone =
-    !raw.phonePrimary ||
-    String(raw.phonePrimary).includes('463-37-36') ||
-    raw.telegramUsername === 'RavonAutoTuningUz';
+  let addressCity =
+    typeof raw.addressCity === 'string' && raw.addressCity.trim()
+      ? raw.addressCity.trim()
+      : DEFAULT_SITE_SETTINGS.addressCity;
+  if (isLegacyTashkent(addressCity)) {
+    addressCity = DEFAULT_SITE_SETTINGS.addressCity;
+    wasModified = true;
+  }
+
+  let addressBazaar =
+    typeof raw.addressBazaar === 'string' && raw.addressBazaar.trim()
+      ? raw.addressBazaar.trim()
+      : DEFAULT_SITE_SETTINGS.addressBazaar;
+  if (isLegacyTashkent(addressBazaar)) {
+    addressBazaar = DEFAULT_SITE_SETTINGS.addressBazaar;
+    wasModified = true;
+  }
+
+  let addressDetails =
+    typeof raw.addressDetails === 'string' && raw.addressDetails.trim()
+      ? raw.addressDetails.trim()
+      : DEFAULT_SITE_SETTINGS.addressDetails;
+  if (isLegacyTashkent(addressDetails)) {
+    addressDetails = DEFAULT_SITE_SETTINGS.addressDetails;
+    wasModified = true;
+  }
+
+  let mapLocationUrl =
+    typeof raw.mapLocationUrl === 'string' && raw.mapLocationUrl.trim()
+      ? raw.mapLocationUrl.trim()
+      : DEFAULT_SITE_SETTINGS.mapLocationUrl;
+  if (isLegacyTashkent(mapLocationUrl)) {
+    mapLocationUrl = DEFAULT_SITE_SETTINGS.mapLocationUrl;
+    wasModified = true;
+  }
+
+  let phonePrimary =
+    typeof raw.phonePrimary === 'string' && raw.phonePrimary.trim()
+      ? raw.phonePrimary.trim()
+      : DEFAULT_SITE_SETTINGS.phonePrimary;
+  if (phonePrimary.includes('524 04 01') || phonePrimary.includes('524-04-01')) {
+    phonePrimary = DEFAULT_SITE_SETTINGS.phonePrimary;
+    wasModified = true;
+  }
+
+  let phoneSecondary =
+    typeof raw.phoneSecondary === 'string' && raw.phoneSecondary.trim()
+      ? raw.phoneSecondary.trim()
+      : DEFAULT_SITE_SETTINGS.phoneSecondary;
+  if (phoneSecondary.includes('524 04 01') || phoneSecondary.includes('524-04-01')) {
+    phoneSecondary = DEFAULT_SITE_SETTINGS.phoneSecondary;
+    wasModified = true;
+  }
+
+  let telegramUsername =
+    typeof raw.telegramUsername === 'string' && raw.telegramUsername.trim()
+      ? raw.telegramUsername.trim().replace(/^@/, '')
+      : DEFAULT_SITE_SETTINGS.telegramUsername;
+  if (telegramUsername === 'RavonAutoTuningUz') {
+    telegramUsername = DEFAULT_SITE_SETTINGS.telegramUsername;
+    wasModified = true;
+  }
+
+  const telegramChannel =
+    typeof raw.telegramChannel === 'string' && raw.telegramChannel.trim()
+      ? raw.telegramChannel.trim()
+      : DEFAULT_SITE_SETTINGS.telegramChannel;
+
+  const instagramUrl =
+    typeof raw.instagramUrl === 'string' && raw.instagramUrl.trim()
+      ? raw.instagramUrl.trim()
+      : DEFAULT_SITE_SETTINGS.instagramUrl;
+
+  let whatsappUrl =
+    typeof raw.whatsappUrl === 'string' && raw.whatsappUrl.trim()
+      ? raw.whatsappUrl.trim()
+      : DEFAULT_SITE_SETTINGS.whatsappUrl;
+  if (whatsappUrl.includes('975240401')) {
+    whatsappUrl = DEFAULT_SITE_SETTINGS.whatsappUrl;
+    wasModified = true;
+  }
 
   const settings: SiteSettings = stripUndefinedDeep({
     ...DEFAULT_SITE_SETTINGS,
     ...raw,
-    addressCity: 'Namangan viloyati, Uychi tumani',
-    addressBazaar: 'Namangan viloyati, Uychi tumani',
-    addressDetails: 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi',
-    mapLocationUrl: 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani',
-    ...(hasLegacyPhone
-      ? {
-          phonePrimary: DEFAULT_SITE_SETTINGS.phonePrimary,
-          phoneSecondary: DEFAULT_SITE_SETTINGS.phoneSecondary,
-          telegramUsername: DEFAULT_SITE_SETTINGS.telegramUsername,
-          telegramChannel: DEFAULT_SITE_SETTINGS.telegramChannel,
-          whatsappUrl: DEFAULT_SITE_SETTINGS.whatsappUrl,
-        }
-      : {}),
+    addressCity,
+    addressBazaar,
+    addressDetails,
+    mapLocationUrl,
+    phonePrimary,
+    phoneSecondary,
+    telegramUsername,
+    telegramChannel,
+    instagramUrl,
+    whatsappUrl,
   });
 
   return {
     settings,
-    wasModified: hasLegacyAddr || hasLegacyPhone,
+    wasModified,
   };
 }
 
@@ -741,12 +875,19 @@ export async function pushRealtimeState(partial: RavonSyncPayload): Promise<void
       ? addDeletedProductIds(partial.deletedProductIds)
       : Array.from(getDeletedProductIds());
 
+  if (partial.siteSettings !== undefined) {
+    setLocalSettingsUpdatedAt(now);
+  }
+
   const payload: RavonSyncPayload = stripUndefinedDeep({
     ...partial,
     ...(normalizedProducts !== undefined ? { products: normalizedProducts } : {}),
     ...(partial.orders !== undefined ? { orders: sanitizeOrdersList(partial.orders) } : {}),
     ...(partial.siteSettings !== undefined
-      ? { siteSettings: sanitizeSiteSettings(partial.siteSettings).settings }
+      ? {
+          siteSettings: sanitizeSiteSettings(partial.siteSettings).settings,
+          settingsUpdatedAt: partial.settingsUpdatedAt || now,
+        }
       : {}),
     deletedProductIds,
     updatedAt: now,
@@ -878,8 +1019,24 @@ export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
       if (Array.isArray(rtMain.deletedProductIds)) {
         addDeletedProductIds(rtMain.deletedProductIds);
       }
-      if (!restMainData || (rtMain.updatedAt || 0) > (restMainData.updatedAt || 0)) {
-        restMainData = { ...(restMainData || {}), ...rtMain };
+      if (!restMainData) {
+        restMainData = rtMain;
+      } else {
+        const rtSettingsTs = rtMain.settingsUpdatedAt || rtMain.updatedAt || 0;
+        const restSettingsTs = restMainData.settingsUpdatedAt || restMainData.updatedAt || 0;
+        const pickedSettings =
+          rtMain.siteSettings && rtSettingsTs >= restSettingsTs
+            ? rtMain.siteSettings
+            : restMainData.siteSettings || rtMain.siteSettings;
+        const pickedSettingsTs = Math.max(rtSettingsTs, restSettingsTs);
+
+        if ((rtMain.updatedAt || 0) >= (restMainData.updatedAt || 0)) {
+          restMainData = { ...restMainData, ...rtMain };
+        }
+        if (pickedSettings) {
+          restMainData.siteSettings = pickedSettings;
+          restMainData.settingsUpdatedAt = pickedSettingsTs;
+        }
       }
     }
     const combinedRestProds = [...rProds, ...rtProds];
@@ -965,8 +1122,27 @@ export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
     allDeletedIds
   );
 
+  // Pick the freshest siteSettings across all sources based on settingsUpdatedAt || updatedAt
+  let freshestSettingsSource: RavonSyncPayload | null = null;
+  let freshestSettingsTs = 0;
+  for (const src of sources) {
+    if (src.siteSettings) {
+      const ts = src.settingsUpdatedAt || src.updatedAt || 0;
+      if (!freshestSettingsSource || ts >= freshestSettingsTs) {
+        freshestSettingsSource = src;
+        freshestSettingsTs = ts;
+      }
+    }
+  }
+
   const combined: RavonSyncPayload = {
     ...primary,
+    ...(freshestSettingsSource?.siteSettings
+      ? {
+          siteSettings: freshestSettingsSource.siteSettings,
+          settingsUpdatedAt: freshestSettingsTs,
+        }
+      : {}),
     products: mergedProducts,
     deletedProductIds: allDeletedIds,
     updatedAt: primary.updatedAt || Date.now(),
@@ -1043,8 +1219,18 @@ export function subscribeToRealtimeSync(
       data.orders = sanitizeOrdersList(data.orders);
     }
     if (data.siteSettings !== undefined) {
-      const { settings } = sanitizeSiteSettings(data.siteSettings);
-      data.siteSettings = settings;
+      const localTs = getLocalSettingsUpdatedAt();
+      const incomingTs = data.settingsUpdatedAt || data.updatedAt || 0;
+      if (localTs > 0 && incomingTs > 0 && incomingTs < localTs) {
+        // Ignore stale remote siteSettings if local settings were saved more recently
+        delete data.siteSettings;
+      } else {
+        const { settings } = sanitizeSiteSettings(data.siteSettings);
+        data.siteSettings = settings;
+        if (incomingTs > localTs) {
+          setLocalSettingsUpdatedAt(incomingTs);
+        }
+      }
     }
     onUpdate(data);
   };
@@ -1161,6 +1347,25 @@ export function subscribeToRealtimeSync(
       );
     } catch {
       unsubscribeRtdbMain = null;
+    }
+
+    try {
+      rtdbOnValue(
+        rtdbRef(rtdb, 'ravon_settings'),
+        (snap) => {
+          const val = snap.val();
+          if (val && typeof val === 'object' && val.siteSettings) {
+            applyIncoming({
+              siteSettings: val.siteSettings,
+              settingsUpdatedAt: Number(val.settingsUpdatedAt) || Date.now(),
+              updatedAt: Number(val.settingsUpdatedAt) || Date.now(),
+            });
+          }
+        },
+        () => {}
+      );
+    } catch {
+      // ignore
     }
   }
 

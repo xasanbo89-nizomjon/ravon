@@ -154,7 +154,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden md:inline-flex items-center gap-1 text-zinc-400">
                 <MapPin className="w-3.5 h-3.5 text-red-500" />
                 <span>
-                  Manzil: <strong className="text-zinc-200">Namangan viloyati, Uychi tumani</strong>
+                  Manzil: <strong className="text-zinc-200">{siteSettings.addressCity || 'Namangan viloyati, Uychi tumani'}</strong>
                 </span>
               </span>
             </div>
@@ -639,18 +639,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <MapPin className="w-4 h-4" />
                   </div>
                   <div className="min-w-0 text-xs">
-                    <div className="font-bold text-white">Namangan viloyati, Uychi tumani</div>
+                    <div className="font-bold text-white">{siteSettings.addressCity || 'Namangan viloyati, Uychi tumani'}</div>
                     <div className="text-zinc-400 text-[11px]">
-                      Namangan viloyati, Uychi tumani • Ravon Auto Tuning
+                      {siteSettings.addressDetails || 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning'}
                     </div>
                     <a 
-                      href="https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani"
+                      href={siteSettings.mapLocationUrl || 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani'}
                       target="_blank" 
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 text-[11px] text-red-400 hover:underline mt-1 font-medium"
                     >
                       <Navigation className="w-3 h-3" />
-                      Xaritada ko‘rish (Namangan viloyati, Uychi tumani)
+                      Xaritada ko‘rish ({siteSettings.addressCity || 'Namangan viloyati, Uychi tumani'})
                     </a>
                   </div>
                 </div>

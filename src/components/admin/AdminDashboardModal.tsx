@@ -129,11 +129,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(true);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
 
-  // TAB 1: Site Settings Form State
+  // TAB 1: Site Settings Form State (Only initialize when modal opens so background polling never overwrites user typing)
   const [tempSettings, setTempSettings] = useState<SiteSettings>(siteSettings);
   useEffect(() => {
-    setTempSettings(siteSettings);
-  }, [siteSettings, isOpen]);
+    if (isOpen) {
+      setTempSettings(siteSettings);
+    }
+  }, [isOpen]);
   const [isSendingTelegramTest, setIsSendingTelegramTest] = useState(false);
   const [telegramTestStatus, setTelegramTestStatus] = useState<{ success?: boolean; message?: string } | null>(null);
   const [isTestingGemini, setIsTestingGemini] = useState(false);
@@ -292,7 +294,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           products,
           categories,
           carModels,
-          siteSettings,
           announcementBanner,
         }).catch(() => {});
       }
@@ -313,8 +314,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         products,
         categories,
         carModels,
-        siteSettings,
-        announcementBanner,
+        siteSettings: tempSettings,
+        announcementBanner: tempBanner,
         promoCodes: localPromoCodes,
         reviews: localReviews,
       });
@@ -430,8 +431,22 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   // Save Settings
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateSiteSettings(tempSettings);
-    showToast("Sayt sozlamalari muvaffaqiyatli saqlandi!");
+    const cleanedSettings: SiteSettings = {
+      ...tempSettings,
+      phonePrimary: tempSettings.phonePrimary.trim(),
+      phoneSecondary: tempSettings.phoneSecondary.trim(),
+      addressCity: tempSettings.addressCity.trim(),
+      addressBazaar: tempSettings.addressBazaar.trim(),
+      addressDetails: tempSettings.addressDetails.trim(),
+      mapLocationUrl: tempSettings.mapLocationUrl.trim(),
+      telegramChannel: tempSettings.telegramChannel.trim(),
+      telegramUsername: tempSettings.telegramUsername.trim(),
+      instagramUrl: tempSettings.instagramUrl.trim(),
+      whatsappUrl: (tempSettings.whatsappUrl || '').trim(),
+    };
+    setTempSettings(cleanedSettings);
+    onUpdateSiteSettings(cleanedSettings);
+    showToast("Sayt sozlamalari Firebase bazasiga muvaffaqiyatli saqlandi!");
   };
 
   // Save Banner
@@ -1377,7 +1392,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   <MessageSquare className="w-4 h-4" />
                   <span>Ijtimoiy Tarmoqlar</span>
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs text-zinc-300 mb-1">Telegram Kanal Havolasi</label>
                     <input
@@ -1402,6 +1417,16 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                       type="text"
                       value={tempSettings.instagramUrl}
                       onChange={(e) => setTempSettings({ ...tempSettings, instagramUrl: e.target.value })}
+                      className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-2 text-xs text-zinc-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-300 mb-1">WhatsApp Havolasi</label>
+                    <input
+                      type="text"
+                      value={tempSettings.whatsappUrl || ''}
+                      onChange={(e) => setTempSettings({ ...tempSettings, whatsappUrl: e.target.value })}
+                      placeholder="https://wa.me/998954633736"
                       className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-2 text-xs text-zinc-100"
                     />
                   </div>

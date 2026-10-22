@@ -127,19 +127,21 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="flex items-start gap-2">
               <MapPin className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
               <div>
-                <div className="font-bold text-white">Namangan viloyati, Uychi tumani</div>
+                <div className="font-bold text-white">
+                  {siteSettings.addressCity || 'Namangan viloyati, Uychi tumani'}
+                </div>
                 <div className="text-zinc-400 text-[11px]">
-                  Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi
+                  {siteSettings.addressDetails || 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi'}
                 </div>
               </div>
             </div>
             <a 
-              href="https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani"
+              href={siteSettings.mapLocationUrl || 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani'}
               target="_blank" 
               rel="noreferrer"
               className="text-red-400 hover:underline flex items-center gap-1 font-semibold pl-6"
             >
-              <span>Xaritada ko‘rish (Namangan viloyati, Uychi tumani)</span>
+              <span>Xaritada ko‘rish ({siteSettings.addressCity || 'Namangan viloyati, Uychi tumani'})</span>
               <ExternalLink className="w-3 h-3" />
             </a>
             <div className="flex items-center gap-2">
@@ -164,13 +166,67 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="flex items-start gap-2">
               <MessageSquare className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <a href="https://t.me/Doliyev_dilshod" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-semibold">
-                  @Doliyev_dilshod
-                </a>
-                <span className="text-zinc-600">•</span>
-                <a href="https://t.me/Sherzodjanovich_7" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-semibold">
-                  @Sherzodjanovich_7
-                </a>
+                {siteSettings.telegramUsername ? (
+                  <a
+                    href={
+                      siteSettings.telegramUsername.startsWith('http')
+                        ? siteSettings.telegramUsername
+                        : `https://t.me/${siteSettings.telegramUsername.replace(/^@/, '')}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-400 hover:underline font-semibold"
+                  >
+                    @{siteSettings.telegramUsername.replace(/^https?:\/\/t\.me\//, '').replace(/^@/, '')}
+                  </a>
+                ) : (
+                  <a href="https://t.me/Doliyev_dilshod" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-semibold">
+                    @Doliyev_dilshod
+                  </a>
+                )}
+                {siteSettings.telegramChannel && (
+                  <>
+                    <span className="text-zinc-600">•</span>
+                    <a
+                      href={
+                        siteSettings.telegramChannel.startsWith('http')
+                          ? siteSettings.telegramChannel
+                          : `https://t.me/${siteSettings.telegramChannel.replace(/^@/, '')}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-400 hover:underline font-semibold"
+                    >
+                      Telegram Kanal
+                    </a>
+                  </>
+                )}
+                {siteSettings.instagramUrl && (
+                  <>
+                    <span className="text-zinc-600">•</span>
+                    <a
+                      href={siteSettings.instagramUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-pink-400 hover:underline font-semibold"
+                    >
+                      Instagram
+                    </a>
+                  </>
+                )}
+                {siteSettings.whatsappUrl && (
+                  <>
+                    <span className="text-zinc-600">•</span>
+                    <a
+                      href={siteSettings.whatsappUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-400 hover:underline font-semibold"
+                    >
+                      WhatsApp
+                    </a>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2 text-zinc-400">

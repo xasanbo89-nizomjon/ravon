@@ -36,7 +36,7 @@ app.use((req, res, next) => {
 export const DEFAULT_TELEGRAM_BOT_TOKEN = '8606681013:AAHtKlObBKbcOQWLP-rjnImGJqOAc3moljY';
 export const DEFAULT_TELEGRAM_ADMIN_CHAT_ID = '6664036733';
 export const DEFAULT_ADMIN_USERNAME = 'Doliyev_dilshod';
-export const DEFAULT_ADMIN_PHONE = '+998 97 524 04 01';
+export const DEFAULT_ADMIN_PHONE = '+998 (95) 463-37-36';
 
 // Active Gemini API key loaded strictly from environment variables
 let dynamicApiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
@@ -616,8 +616,18 @@ async function pullStateFromCloudFirestore(): Promise<Record<string, any> | null
     if (rtdbMainRes && rtdbMainRes.ok) {
       const rtMainJson = await rtdbMainRes.json();
       if (rtMainJson && typeof rtMainJson === 'object') {
+        const rtSettingsTs = rtMainJson.settingsUpdatedAt || rtMainJson.updatedAt || 0;
+        const fsSettingsTs = mainData.settingsUpdatedAt || mainData.updatedAt || 0;
+        const bestSettings =
+          rtMainJson.siteSettings && rtSettingsTs >= fsSettingsTs
+            ? rtMainJson.siteSettings
+            : mainData.siteSettings || rtMainJson.siteSettings;
         if ((rtMainJson.updatedAt || 0) >= (mainData.updatedAt || 0)) {
           mainData = { ...mainData, ...rtMainJson };
+        }
+        if (bestSettings) {
+          mainData.siteSettings = bestSettings;
+          mainData.settingsUpdatedAt = Math.max(rtSettingsTs, fsSettingsTs);
         }
       }
     }
@@ -821,15 +831,6 @@ app.get(['/api/sync/state', '/sync/state'], async (req, res) => {
     // fallback to sharedRealtimeState
   }
 
-  if (sharedRealtimeState.siteSettings) {
-    sharedRealtimeState.siteSettings = {
-      ...sharedRealtimeState.siteSettings,
-      addressCity: 'Namangan viloyati, Uychi tumani',
-      addressBazaar: 'Namangan viloyati, Uychi tumani',
-      addressDetails: 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi',
-      mapLocationUrl: 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani',
-    };
-  }
   return res.json({
     success: true,
     state: sharedRealtimeState.updatedAt > 0 ? sharedRealtimeState : null,
@@ -839,15 +840,6 @@ app.get(['/api/sync/state', '/sync/state'], async (req, res) => {
 app.post(['/api/sync/state', '/sync/state'], async (req, res) => {
   try {
     const incoming = req.body || {};
-    if (incoming.siteSettings) {
-      incoming.siteSettings = {
-        ...incoming.siteSettings,
-        addressCity: 'Namangan viloyati, Uychi tumani',
-        addressBazaar: 'Namangan viloyati, Uychi tumani',
-        addressDetails: 'Namangan viloyati, Uychi tumani • Ravon Auto Tuning markazi',
-        mapLocationUrl: 'https://maps.google.com/?q=Namangan+viloyati,+Uychi+tumani',
-      };
-    }
 
     const mergedDeletedIds = Array.from(
       new Set([

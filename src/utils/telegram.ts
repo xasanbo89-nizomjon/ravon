@@ -122,6 +122,7 @@ ${itemsList}
 💰 <b>JAMI TO‘LOV SUMMASI:</b> <b>${formatUzbekSum(totalAmount)}</b>
 ⏰ <b>Qabul qilingan vaqt:</b> ${new Date().toLocaleString('uz-UZ')}
 ━━━━━━━━━━━━━━━━━━━━
+📞 <b>Admin aloqa:</b> +998 (95) 463-37-36 (@Doliyev_dilshod / @Sherzodjanovich_7)
 ✅ <i>Xaridorga shaxsiy chek berildi. Mijoz bilan darhol bog‘lanish tavsiya etiladi.</i>`;
 }
 
@@ -154,7 +155,7 @@ JAMI SUMMA: ${formatUzbekSum(totalAmount)}
 HOLATI: Qabul qilindi
 ----------------------------------------
 Manzil: Namangan viloyati, Uychi tumani (Ravon Auto Tuning)
-Tel: +998 97 524 04 01 | Telegram: @Doliyev_dilshod
+Tel: +998 (95) 463-37-36 | Telegram: @Doliyev_dilshod
 Ushbu chek faqat sizning shaxsiy xaridingiz uchun rasmiy hisoblanadi.
 ========================================`;
 }

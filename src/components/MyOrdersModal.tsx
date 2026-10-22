@@ -186,7 +186,7 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({
                           RAVON AUTO TUNING
                         </div>
                         <div className="text-zinc-400 text-[11px]">
-                          Rasmiy Elektron Xarid Cheki
+                          Namangan viloyati, Uychi tumani • +998 (95) 463-37-36
                         </div>
                       </div>
                       <div className="text-right">
