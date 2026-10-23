@@ -20,7 +20,8 @@ import {
   DEFAULT_SITE_SETTINGS, 
   DEFAULT_BANNER, 
   DEFAULT_CAR_MODELS, 
-  DEFAULT_CATEGORIES, 
+  DEFAULT_CATEGORIES,
+  DEFAULT_BRANDS,
   INITIAL_ORDERS,
   INITIAL_ADMINS,
   DEFAULT_PROMO_CODES
@@ -29,7 +30,8 @@ import {
   Product, 
   CartItem, 
   CarModel, 
-  ProductCategory, 
+  ProductCategory,
+  ProductBrand,
   AiAnalysisResult, 
   OrderForm, 
   SiteSettings, 
@@ -120,6 +122,15 @@ export default function App() {
     }
   });
 
+  const [brands, setBrands] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('ravon_brands');
+      return saved ? JSON.parse(saved) : DEFAULT_BRANDS;
+    } catch {
+      return DEFAULT_BRANDS;
+    }
+  });
+
   // 5. Orders CRM (LocalStorage backed - test orders stripped)
   const [orders, setOrders] = useState<OrderRecord[]>(() => {
     try {
@@ -171,6 +182,7 @@ export default function App() {
   // Filters state
   const [selectedCar, setSelectedCar] = useState<CarModel>('Hammasi');
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory>('Hammasi');
+  const [selectedBrand, setSelectedBrand] = useState<ProductBrand>('Hammasi');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('popular');
   const [discountPercent, setDiscountPercent] = useState(0);
@@ -312,6 +324,12 @@ export default function App() {
     pushRealtimeState({ categories: newCats });
   };
 
+  const handleUpdateBrands = (newBrands: string[]) => {
+    setBrands(newBrands);
+    localStorage.setItem('ravon_brands', JSON.stringify(newBrands));
+    pushRealtimeState({ brands: newBrands });
+  };
+
   const handleUpdateOrders = (newOrders: OrderRecord[]) => {
     setOrders(newOrders);
     localStorage.setItem('ravon_orders', JSON.stringify(newOrders));
@@ -423,6 +441,12 @@ export default function App() {
         setCategories(remote.categories);
         try {
           localStorage.setItem('ravon_categories', JSON.stringify(remote.categories));
+        } catch {}
+      }
+      if (remote.brands !== undefined && Array.isArray(remote.brands)) {
+        setBrands(remote.brands);
+        try {
+          localStorage.setItem('ravon_brands', JSON.stringify(remote.brands));
         } catch {}
       }
       if (remote.promoCodes !== undefined) {
@@ -670,6 +694,7 @@ export default function App() {
       products,
       categories,
       carModels,
+      brands,
       siteSettings,
       announcementBanner,
       promoCodes,
@@ -716,16 +741,24 @@ export default function App() {
       result = result.filter((p) => p.category === selectedCategory);
     }
 
+    // Brand / Manufacturer filter
+    if (selectedBrand !== 'Hammasi') {
+      result = result.filter(
+        (p) => (p.brand || 'GM Genuine (Original)') === selectedBrand
+      );
+    }
+
     // Search query filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter((p) => {
         const matchName = p.name.toLowerCase().includes(q);
         const matchBazaar = p.bazaarName.toLowerCase().includes(q);
+        const matchBrand = (p.brand || '').toLowerCase().includes(q);
         const matchDesc = p.description.toLowerCase().includes(q);
         const matchTags = p.tags.some((t) => t.toLowerCase().includes(q));
         const matchCars = p.carModels.some((c) => c.toLowerCase().includes(q));
-        return matchName || matchBazaar || matchDesc || matchTags || matchCars;
+        return matchName || matchBazaar || matchBrand || matchDesc || matchTags || matchCars;
       });
     }
 
@@ -742,7 +775,7 @@ export default function App() {
     }
 
     return result;
-  }, [products, selectedCar, selectedCategory, searchQuery, sortBy]);
+  }, [products, selectedCar, selectedCategory, selectedBrand, searchQuery, sortBy]);
 
   const scrollToAi = () => {
     const el = document.getElementById('ai-search');
@@ -796,12 +829,14 @@ export default function App() {
       {/* Main Catalog Section */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {/* Filter Controls (Cars, Categories, Sort) */}
+        {/* Filter Controls (Cars, Categories, Brands, Sort) */}
         <FilterBar
           selectedCar={selectedCar}
           setSelectedCar={setSelectedCar}
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
+          selectedBrand={selectedBrand}
+          setSelectedBrand={setSelectedBrand}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           sortBy={sortBy}
@@ -809,6 +844,7 @@ export default function App() {
           totalProductsCount={filteredProducts.length}
           carModels={carModels}
           categories={categories}
+          brands={brands}
         />
 
         {/* Products Grid */}
@@ -822,13 +858,14 @@ export default function App() {
                 Mos mahsulot topilmadi
               </h3>
               <p className="text-xs text-zinc-400">
-                "{searchQuery || selectedCar}" bo‘yicha tovar topilmadi yoki filtrni tozalab ko‘ring.
+                "{searchQuery || (selectedBrand !== 'Hammasi' ? selectedBrand : selectedCar)}" bo‘yicha tovar topilmadi yoki filtrni tozalab ko‘ring.
               </p>
             </div>
             <button
               onClick={() => {
                 setSelectedCar('Hammasi');
                 setSelectedCategory('Hammasi');
+                setSelectedBrand('Hammasi');
                 setSearchQuery('');
               }}
               className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-racing text-xs font-bold uppercase tracking-wider transition"
@@ -1049,6 +1086,8 @@ export default function App() {
             onUpdateCarModels={handleUpdateCarModels}
             categories={categories}
             onUpdateCategories={handleUpdateCategories}
+            brands={brands}
+            onUpdateBrands={handleUpdateBrands}
             orders={orders}
             onUpdateOrders={handleUpdateOrders}
             promoCodes={promoCodes}

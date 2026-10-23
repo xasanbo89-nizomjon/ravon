@@ -1,12 +1,14 @@
 import React from 'react';
-import { CarModel, ProductCategory } from '../types';
-import { Search, SlidersHorizontal, Car, Filter, X } from 'lucide-react';
+import { CarModel, ProductCategory, ProductBrand } from '../types';
+import { Search, SlidersHorizontal, Car, Filter, X, ShieldCheck } from 'lucide-react';
 
 interface FilterBarProps {
   selectedCar: CarModel;
   setSelectedCar: (car: CarModel) => void;
   selectedCategory: ProductCategory;
   setSelectedCategory: (cat: ProductCategory) => void;
+  selectedBrand: ProductBrand;
+  setSelectedBrand: (brand: ProductBrand) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   sortBy: string;
@@ -14,6 +16,7 @@ interface FilterBarProps {
   totalProductsCount: number;
   carModels: string[];
   categories: string[];
+  brands: string[];
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -21,6 +24,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   setSelectedCar,
   selectedCategory,
   setSelectedCategory,
+  selectedBrand,
+  setSelectedBrand,
   searchQuery,
   setSearchQuery,
   sortBy,
@@ -28,12 +33,18 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   totalProductsCount,
   carModels,
   categories,
+  brands,
 }) => {
-  const hasActiveFilters = selectedCar !== 'Hammasi' || selectedCategory !== 'Hammasi' || searchQuery !== '';
+  const hasActiveFilters =
+    selectedCar !== 'Hammasi' ||
+    selectedCategory !== 'Hammasi' ||
+    selectedBrand !== 'Hammasi' ||
+    searchQuery !== '';
 
   const handleResetFilters = () => {
     setSelectedCar('Hammasi');
     setSelectedCategory('Hammasi');
+    setSelectedBrand('Hammasi');
     setSearchQuery('');
   };
 
@@ -62,7 +73,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Qidiruv (nomi, laqabi)..."
+              placeholder="Qidiruv (nomi, laqabi, brendi)..."
               className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-2 pl-9 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500 transition"
             />
             <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -104,7 +115,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
       </div>
 
-      {/* Car Models Filter Pill Bar */}
+      {/* Car Models, Categories & Brands Filter Panel */}
       <div className="bg-[#0f1118] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 space-y-3">
         <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-wider">
           <Car className="w-3.5 h-3.5 text-red-500" />
@@ -150,7 +161,34 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             );
           })}
         </div>
+
+        {/* Brands / Manufacturers Bar */}
+        {brands && brands.length > 0 && (
+          <div className="pt-2 border-t border-zinc-850 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <span className="text-[11px] uppercase font-bold text-zinc-500 shrink-0 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Brend / Ishlab chiqaruvchi:</span>
+            </span>
+            {brands.map((brand) => {
+              const isActive = selectedBrand === brand;
+              return (
+                <button
+                  key={brand}
+                  onClick={() => setSelectedBrand(brand)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+                    isActive
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-sm shadow-amber-950/50'
+                      : 'bg-zinc-900/60 hover:bg-zinc-850 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                  }`}
+                >
+                  {brand === 'Hammasi' ? 'Barcha brendlar' : brand}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
 };
+

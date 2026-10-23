@@ -87,6 +87,8 @@ interface AdminDashboardModalProps {
   onUpdateCarModels: (models: string[]) => void;
   categories: string[];
   onUpdateCategories: (categories: string[]) => void;
+  brands?: string[];
+  onUpdateBrands?: (brands: string[]) => void;
   orders: OrderRecord[];
   onUpdateOrders: (orders: OrderRecord[]) => void;
   promoCodes?: PromoCode[];
@@ -112,6 +114,19 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   onUpdateCarModels,
   categories,
   onUpdateCategories,
+  brands = [
+    'Hammasi',
+    'GM Genuine (Original)',
+    'Ravon Original',
+    'Zimmer',
+    'Vland / Optra',
+    'Merc Tuning',
+    'AMG / Sport',
+    'SS20',
+    'Hi-Q (Koreya)',
+    'Brembo',
+  ],
+  onUpdateBrands,
   orders,
   onUpdateOrders,
   promoCodes = [],
@@ -151,6 +166,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     name: '',
     bazaarName: '',
+    brand: 'GM Genuine (Original)',
     category: 'Optika',
     carModels: ['Gentra'],
     price: 500000,
@@ -171,6 +187,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [newCarModelName, setNewCarModelName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newBrandName, setNewBrandName] = useState('');
 
   // TAB 4: Banner Form State
   const [tempBanner, setTempBanner] = useState<AnnouncementBanner>(announcementBanner);
@@ -294,6 +311,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           products,
           categories,
           carModels,
+          brands,
           announcementBanner,
         }).catch(() => {});
       }
@@ -314,6 +332,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         products,
         categories,
         carModels,
+        brands,
         siteSettings: tempSettings,
         announcementBanner: tempBanner,
         promoCodes: localPromoCodes,
@@ -442,7 +461,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       telegramChannel: tempSettings.telegramChannel.trim(),
       telegramUsername: tempSettings.telegramUsername.trim(),
       instagramUrl: tempSettings.instagramUrl.trim(),
-      whatsappUrl: (tempSettings.whatsappUrl || '').trim(),
     };
     setTempSettings(cleanedSettings);
     onUpdateSiteSettings(cleanedSettings);
@@ -494,6 +512,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         ...prev,
         name: res.partName || prev.name,
         bazaarName: res.bazaarName || prev.bazaarName,
+        brand: res.brand || prev.brand || 'GM Genuine (Original)',
         category: res.category || prev.category || 'Optika',
         carModels: res.compatibleCars && res.compatibleCars.length > 0 ? res.compatibleCars : ['Gentra'],
         description: res.description + (res.tuningTips ? ` (Usta tavsiyasi: ${res.tuningTips})` : ''),
@@ -543,6 +562,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       id: 'ravon-' + Date.now(),
       name: newProduct.name || 'Yangi Zapchast',
       bazaarName: newProduct.bazaarName || newProduct.name || 'Zapchast',
+      brand: newProduct.brand || 'GM Genuine (Original)',
       category: newProduct.category || 'Optika',
       carModels: newProduct.carModels && newProduct.carModels.length > 0 ? newProduct.carModels : ['Gentra'],
       price: Number(newProduct.price) || 0,
@@ -554,6 +574,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
       ...(newProduct.badge ? { badge: newProduct.badge } : { badge: 'YANGILIK' }),
       description: newProduct.description || '',
       specs: [
+        { label: 'Brend / Ishlab chiqaruvchi', value: newProduct.brand || 'GM Genuine (Original)' },
         { label: 'Mos modellar', value: (newProduct.carModels || []).join(', ') },
         { label: 'Kategoriya', value: newProduct.category || 'Optika' },
         { label: 'Kafolat', value: '14 kun tekshirish kafolati' },
@@ -568,6 +589,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     setNewProduct({
       name: '',
       bazaarName: '',
+      brand: 'GM Genuine (Original)',
       category: 'Optika',
       carModels: ['Gentra'],
       price: 500000,
@@ -643,6 +665,24 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     if (cat === 'Hammasi') return;
     onUpdateCategories(categories.filter(c => c !== cat));
     showToast(`"${cat}" kategoriyasi o'chirildi!`);
+  };
+
+  // Brands
+  const handleAddBrand = () => {
+    if (!newBrandName.trim() || !onUpdateBrands) return;
+    if (brands.includes(newBrandName.trim())) {
+      showToast("Bu brend allaqachon mavjud!");
+      return;
+    }
+    onUpdateBrands([...brands, newBrandName.trim()]);
+    setNewBrandName('');
+    showToast("Yangi brend / ishlab chiqaruvchi qo'shildi!");
+  };
+
+  const handleDeleteBrand = (brand: string) => {
+    if (brand === 'Hammasi' || !onUpdateBrands) return;
+    onUpdateBrands(brands.filter(b => b !== brand));
+    showToast(`"${brand}" brendi o'chirildi!`);
   };
 
   // CRM Order status
@@ -741,7 +781,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const filteredProductList = products.filter(p => {
     if (!productSearch) return true;
     const q = productSearch.toLowerCase();
-    return p.name.toLowerCase().includes(q) || p.bazaarName.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.bazaarName.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q) ||
+      (p.brand || '').toLowerCase().includes(q)
+    );
   });
 
   const filteredOrders = orders.filter(o => {
@@ -1392,7 +1437,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   <MessageSquare className="w-4 h-4" />
                   <span>Ijtimoiy Tarmoqlar</span>
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs text-zinc-300 mb-1">Telegram Kanal Havolasi</label>
                     <input
@@ -1417,16 +1462,6 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                       type="text"
                       value={tempSettings.instagramUrl}
                       onChange={(e) => setTempSettings({ ...tempSettings, instagramUrl: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-2 text-xs text-zinc-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-zinc-300 mb-1">WhatsApp Havolasi</label>
-                    <input
-                      type="text"
-                      value={tempSettings.whatsappUrl || ''}
-                      onChange={(e) => setTempSettings({ ...tempSettings, whatsappUrl: e.target.value })}
-                      placeholder="https://wa.me/998954633736"
                       className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-2 text-xs text-zinc-100"
                     />
                   </div>
@@ -1875,7 +1910,20 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs text-zinc-300 font-semibold mb-1">Brend / Ishlab chiqaruvchi</label>
+                      <select
+                        value={newProduct.brand || 'GM Genuine (Original)'}
+                        onChange={(e) => setNewProduct({ ...newProduct, brand: e.target.value })}
+                        className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-2 text-xs text-amber-300 font-semibold"
+                      >
+                        {brands.filter(b => b !== 'Hammasi').map(b => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div>
                       <label className="block text-xs text-zinc-300 font-semibold mb-1">Kategoriya</label>
                       <select
@@ -2001,8 +2049,8 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
           {activeTab === 'products' && (
             <div className="space-y-6">
               
-              {/* Car Models & Categories Management sub-section */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Car Models, Categories & Brands Management sub-section */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Car Models Management */}
                 <div className="bg-[#12141e] border border-zinc-800 rounded-2xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -2018,7 +2066,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                         type="text"
                         value={newCarModelName}
                         onChange={(e) => setNewCarModelName(e.target.value)}
-                        placeholder="Yangi model (masalan: Captiva, Monza)..."
+                        placeholder="Yangi model (masalan: Captiva)..."
                         className="flex-1 bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-1.5 text-xs text-white"
                       />
                       <button
@@ -2100,6 +2148,55 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* Brands / Manufacturers Management */}
+                <div className="bg-[#12141e] border border-zinc-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-amber-400" />
+                      <span>Brendlar / Ishlab chiqaruvchilar ({Math.max(0, brands.length - 1)} ta)</span>
+                    </h4>
+                  </div>
+
+                  {!isManager && (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newBrandName}
+                        onChange={(e) => setNewBrandName(e.target.value)}
+                        placeholder="Yangi brend (masalan: Bosch)..."
+                        className="flex-1 bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-1.5 text-xs text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddBrand}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Qo‘shish
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                    {brands.map(brand => (
+                      <span 
+                        key={brand} 
+                        className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-amber-300/90 flex items-center gap-1.5"
+                      >
+                        {brand}
+                        {!isManager && brand !== 'Hammasi' && (
+                          <button 
+                            type="button"
+                            onClick={() => handleDeleteBrand(brand)}
+                            className="text-zinc-500 hover:text-red-400 text-[10px]"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* Products List & Search */}
@@ -2143,6 +2240,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                       <tr>
                         <th className="p-3">Rasm</th>
                         <th className="p-3">Nomi & Bozor Laqabi</th>
+                        <th className="p-3">Brend</th>
                         <th className="p-3">Kategoriya</th>
                         <th className="p-3">Mos modellar</th>
                         <th className="p-3">Narxi</th>
@@ -2163,6 +2261,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                           <td className="p-3 min-w-[200px] max-w-[420px]">
                             <div className="font-bold text-white">{prod.name}</div>
                             <div className="text-[11px] text-red-400 font-bold">"{prod.bazaarName}"</div>
+                          </td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded bg-amber-950/60 border border-amber-800/50 text-[10px] font-semibold text-amber-300">
+                              {prod.brand || 'GM Genuine (Original)'}
+                            </span>
                           </td>
                           <td className="p-3 text-zinc-300">{prod.category}</td>
                           <td className="p-3">
@@ -2265,6 +2368,33 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                             onChange={(e) => setEditingProduct({ ...editingProduct, price: Number(e.target.value) })}
                             className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white font-racing"
                           />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-zinc-300 mb-1">Brend / Ishlab chiqaruvchi</label>
+                          <select
+                            value={editingProduct.brand || 'GM Genuine (Original)'}
+                            onChange={(e) => setEditingProduct({ ...editingProduct, brand: e.target.value })}
+                            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-amber-300 font-semibold"
+                          >
+                            {brands.filter(b => b !== 'Hammasi').map(b => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-zinc-300 mb-1">Kategoriya</label>
+                          <select
+                            value={editingProduct.category}
+                            onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white"
+                          >
+                            {categories.filter(c => c !== 'Hammasi').map(c => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 

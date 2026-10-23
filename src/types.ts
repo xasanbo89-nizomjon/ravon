@@ -1,10 +1,12 @@
 export type CarModel = string;
 export type ProductCategory = string;
+export type ProductBrand = string;
 
 export interface Product {
   id: string;
   name: string;
   bazaarName: string;
+  brand?: string;
   carModels: string[];
   category: string;
   price: number; // in UZS (so'm)
@@ -101,7 +103,6 @@ export interface SiteSettings {
   telegramChannel: string;
   telegramUsername: string;
   instagramUrl: string;
-  whatsappUrl: string;
   deliveryCost: number;
   freeDeliveryThreshold: number;
   paymentCardNumber: string;
@@ -122,6 +123,7 @@ export interface AnnouncementBanner {
 export interface AiAnalysisResult {
   partName: string;
   bazaarName: string;
+  brand?: string;
   category: string;
   compatibleCars: string[];
   estimatedPriceRange: string;

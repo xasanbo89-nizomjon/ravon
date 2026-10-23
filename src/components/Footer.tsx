@@ -214,19 +214,6 @@ export const Footer: React.FC<FooterProps> = ({
                     </a>
                   </>
                 )}
-                {siteSettings.whatsappUrl && (
-                  <>
-                    <span className="text-zinc-600">•</span>
-                    <a
-                      href={siteSettings.whatsappUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-emerald-400 hover:underline font-semibold"
-                    >
-                      WhatsApp
-                    </a>
-                  </>
-                )}
               </div>
             </div>
             <div className="flex items-center gap-2 text-zinc-400">

@@ -319,6 +319,7 @@ Rasmdagi detalni aniqlab, quyidagi JSON formatida javob bering:
 {
   "partName": "Detalning aniq o'zbekcha nomi",
   "bazaarName": "Bozordagi mashhur qisqa nomi / laqabi",
+  "brand": "Ishlab chiqaruvchi brend (masalan: GM Genuine (Original) | Ravon Original | Zimmer | Vland / Optra | Merc Tuning | AMG / Sport | SS20 | Hi-Q (Koreya) | Brembo)",
   "category": "Optika | Salon | Kuzov | Xodovoy | Elektronika | Aksessuarlar",
   "compatibleCars": ["Gentra", "Cobalt"],
   "estimatedPriceRange": "150 000 - 300 000 so'm",

@@ -17,7 +17,6 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   telegramChannel: 'https://t.me/Doliyev_dilshod',
   telegramUsername: 'Doliyev_dilshod',
   instagramUrl: 'https://instagram.com/ravon_autotuning',
-  whatsappUrl: 'https://wa.me/998954633736',
   deliveryCost: 35000,
   freeDeliveryThreshold: 1000000,
   paymentCardNumber: '8600 4904 1234 5678',
@@ -55,6 +54,19 @@ export const DEFAULT_CATEGORIES = [
   'Xodovoy',
   'Elektronika',
   'Aksessuarlar',
+];
+
+export const DEFAULT_BRANDS = [
+  'Hammasi',
+  'GM Genuine (Original)',
+  'Ravon Original',
+  'Zimmer',
+  'Vland / Optra',
+  'Merc Tuning',
+  'AMG / Sport',
+  'SS20',
+  'Hi-Q (Koreya)',
+  'Brembo',
 ];
 
 /**

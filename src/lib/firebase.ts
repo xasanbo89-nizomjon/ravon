@@ -4,8 +4,6 @@ import { getDatabase, Database } from 'firebase/database';
 import {
   initializeFirestore,
   getFirestore,
-  doc,
-  getDocFromServer,
   Firestore,
 } from 'firebase/firestore';
 import firebaseAppletConfig from '../../firebase-applet-config.json';
@@ -67,6 +65,12 @@ export const FIRESTORE_REST_BASE_URL = `https://firestore.googleapis.com/v1/proj
   FIREBASE_PROJECT_ID
 )}/databases/${encodeURIComponent(FIRESTORE_DATABASE_ID)}/documents`;
 
+export let isFirestoreQuotaExceeded = false;
+
+export function markFirestoreQuotaExceeded() {
+  isFirestoreQuotaExceeded = true;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -98,8 +102,21 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null
 ) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const lower = errMsg.toLowerCase();
+  if (
+    lower.includes('quota') ||
+    lower.includes('resource-exhausted') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('429') ||
+    lower.includes('offline')
+  ) {
+    isFirestoreQuotaExceeded = true;
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -115,18 +132,7 @@ export function handleFirestoreError(
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.warn('Firestore Notice:', JSON.stringify(errInfo));
 }
 
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-    }
-  }
-}
-
-testConnection();
 

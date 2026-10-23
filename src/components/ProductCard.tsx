@@ -176,8 +176,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Product Content */}
       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
         <div>
-          {/* Compatible Car Models */}
-          <div className="flex flex-wrap gap-1 mb-2">
+          {/* Compatible Car Models & Brand */}
+          <div className="flex flex-wrap items-center gap-1 mb-2">
+            {product.brand && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40">
+                {product.brand}
+              </span>
+            )}
             {product.carModels.map((car, idx) => (
               <span
                 key={idx}

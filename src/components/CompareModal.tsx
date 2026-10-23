@@ -59,6 +59,7 @@ export const CompareModal: React.FC<CompareModalProps> = ({
            (searchQuery.trim() === '' || 
             p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
             p.bazaarName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (p.brand && p.brand.toLowerCase().includes(searchQuery.toLowerCase())) ||
             p.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
@@ -387,7 +388,19 @@ export const CompareModal: React.FC<CompareModalProps> = ({
                         ))}
                       </tr>
 
-                      {/* 2. Category Row */}
+                      {/* 2. Brand / Manufacturer Row */}
+                      <tr className="border-b border-zinc-850 hover:bg-zinc-900/40">
+                        <td className="p-3.5 font-bold text-zinc-400 bg-zinc-950/40">
+                          Brend / Ishlab chiqaruvchi
+                        </td>
+                        {compareItems.map((p) => (
+                          <td key={p.id} className="p-3.5 text-amber-300 font-bold">
+                            {p.brand || 'GM Genuine (Original)'}
+                          </td>
+                        ))}
+                      </tr>
+
+                      {/* 2b. Category Row */}
                       <tr className="border-b border-zinc-850 hover:bg-zinc-900/40">
                         <td className="p-3.5 font-bold text-zinc-400 bg-zinc-950/40">
                           Kategoriya

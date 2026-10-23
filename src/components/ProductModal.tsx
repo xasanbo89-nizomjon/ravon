@@ -123,6 +123,11 @@ export const ProductModal: React.FC<ProductModalProps> = ({
             <div className="space-y-4">
               <div>
                 <div className="flex flex-wrap gap-1.5 mb-2">
+                  {product.brand && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/50 text-xs font-bold">
+                      Brend: {product.brand}
+                    </span>
+                  )}
                   {product.carModels.map((car, idx) => (
                     <span
                       key={idx}
@@ -351,10 +356,10 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               <div className="flex items-center justify-between text-xs text-zinc-400 pt-1">
                 <span>Savolingiz bormi? Mutaxassis maslahati:</span>
                 <a
-                  href="tel:+998975240401"
+                  href="tel:+998954633736"
                   className="text-red-400 hover:underline flex items-center gap-1 font-semibold"
                 >
-                  <Phone className="w-3 h-3" /> +998 97 524 04 01
+                  <Phone className="w-3 h-3" /> +998 (95) 463-37-36
                 </a>
               </div>
             </div>

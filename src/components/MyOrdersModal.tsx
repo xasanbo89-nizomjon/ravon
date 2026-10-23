@@ -278,6 +278,14 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({
                         <Printer className="w-3.5 h-3.5" />
                         <span>Chop etish</span>
                       </button>
+
+                      <a
+                        href="tel:+998954633736"
+                        className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-racing text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Bog‘lanish</span>
+                      </a>
                     </div>
                   </div>
                 </div>

@@ -22,6 +22,8 @@ import {
   FIRESTORE_REST_BASE_URL,
   FIREBASE_API_KEY,
   FIREBASE_RTDB_URL,
+  isFirestoreQuotaExceeded,
+  markFirestoreQuotaExceeded,
 } from '../lib/firebase';
 import {
   Product,
@@ -38,13 +40,14 @@ import {
   DEFAULT_SITE_SETTINGS,
   DEFAULT_CATEGORIES,
   DEFAULT_CAR_MODELS,
+  DEFAULT_BRANDS,
 } from '../data/initialData';
 
 /**
  * Real-time Multi-Device & Multi-Tab Global Synchronization Service
- * (Cloud Firestore SDK + Cloud Firestore REST API + Supabase + Backend Server + BroadcastChannel)
+ * (Firebase Realtime Database + Cloud Firestore SDK/REST + Supabase + Backend Server + BroadcastChannel)
  *
- * Guarantees that all products, categories, carModels, siteSettings, banner, promoCodes, reviews, and orders
+ * Guarantees that all products, brands, categories, carModels, siteSettings, banner, promoCodes, reviews, and orders
  * added, edited, or deleted via the Admin Panel are saved to the global database and immediately visible
  * to all users on any phone, tablet, or computer in real time.
  */
@@ -57,6 +60,7 @@ export interface RavonSyncPayload {
   announcementBanner?: AnnouncementBanner;
   carModels?: string[];
   categories?: string[];
+  brands?: string[];
   promoCodes?: PromoCode[];
   reviews?: ProductReview[];
   deletedProductIds?: string[];
@@ -185,32 +189,37 @@ function fromFirestoreDocument(docObj: any): Record<string, any> | null {
 }
 
 async function restUpsertProductDoc(product: Product & { sortOrder?: number; updatedAt?: number }): Promise<void> {
+  if (isFirestoreQuotaExceeded) return;
   try {
     const docUrl = `${FIRESTORE_REST_BASE_URL}/${PRODUCTS_COLLECTION}/${encodeURIComponent(
       product.id
     )}?key=${encodeURIComponent(FIREBASE_API_KEY)}`;
-    await fetch(docUrl, {
+    const res = await fetch(docUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields: toFirestoreFields(product) }),
     });
+    if (res.status === 429) markFirestoreQuotaExceeded();
   } catch {
     // ignore
   }
 }
 
 async function restDeleteProductDoc(productId: string): Promise<void> {
+  if (isFirestoreQuotaExceeded) return;
   try {
     const docUrl = `${FIRESTORE_REST_BASE_URL}/${PRODUCTS_COLLECTION}/${encodeURIComponent(
       productId
     )}?key=${encodeURIComponent(FIREBASE_API_KEY)}`;
-    await fetch(docUrl, { method: 'DELETE' });
+    const res = await fetch(docUrl, { method: 'DELETE' });
+    if (res.status === 429) markFirestoreQuotaExceeded();
   } catch {
     // ignore
   }
 }
 
 async function restPatchMainDoc(payload: RavonSyncPayload): Promise<void> {
+  if (isFirestoreQuotaExceeded) return;
   try {
     const keys = Object.keys(payload).filter(
       (k) => (payload as Record<string, any>)[k] !== undefined
@@ -222,11 +231,12 @@ async function restPatchMainDoc(payload: RavonSyncPayload): Promise<void> {
     const docUrl = `${FIRESTORE_REST_BASE_URL}/ravon_sync/main?key=${encodeURIComponent(
       FIREBASE_API_KEY
     )}&${maskQuery}`;
-    await fetch(docUrl, {
+    const res = await fetch(docUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields: toFirestoreFields(payload as Record<string, any>) }),
     });
+    if (res.status === 429) markFirestoreQuotaExceeded();
   } catch {
     // ignore
   }
@@ -235,11 +245,16 @@ async function restPatchMainDoc(payload: RavonSyncPayload): Promise<void> {
 async function restFetchProductsCollection(): Promise<
   Array<Product & { sortOrder?: number; updatedAt?: number }>
 > {
+  if (isFirestoreQuotaExceeded) return [];
   try {
     const colUrl = `${FIRESTORE_REST_BASE_URL}/${PRODUCTS_COLLECTION}?pageSize=300&key=${encodeURIComponent(
       FIREBASE_API_KEY
     )}`;
     const res = await fetch(colUrl, { method: 'GET' });
+    if (res.status === 429) {
+      markFirestoreQuotaExceeded();
+      return [];
+    }
     if (!res.ok) return [];
     const data = await res.json();
     if (!Array.isArray(data.documents)) return [];
@@ -258,11 +273,16 @@ async function restFetchProductsCollection(): Promise<
 }
 
 async function restFetchMainDoc(): Promise<RavonSyncPayload | null> {
+  if (isFirestoreQuotaExceeded) return null;
   try {
     const docUrl = `${FIRESTORE_REST_BASE_URL}/ravon_sync/main?key=${encodeURIComponent(
       FIREBASE_API_KEY
     )}`;
     const res = await fetch(docUrl, { method: 'GET' });
+    if (res.status === 429) {
+      markFirestoreQuotaExceeded();
+      return null;
+    }
     if (!res.ok) return null;
     const data = await res.json();
     const parsed = fromFirestoreDocument(data);
@@ -530,6 +550,7 @@ async function normalizeProductsForCloud(products: Product[]): Promise<Product[]
       id: String(prod.id).trim(),
       name: String(prod.name || 'Zapchast').slice(0, 480),
       bazaarName: String(prod.bazaarName || prod.name || 'Zapchast').slice(0, 300),
+      ...(prod.brand ? { brand: String(prod.brand).trim() } : {}),
       category: String(prod.category || 'Optika'),
       carModels:
         Array.isArray(prod.carModels) && prod.carModels.length > 0
@@ -644,18 +665,15 @@ export function sanitizeSiteSettings(raw: Partial<SiteSettings> | undefined | nu
       ? raw.instagramUrl.trim()
       : DEFAULT_SITE_SETTINGS.instagramUrl;
 
-  let whatsappUrl =
-    typeof raw.whatsappUrl === 'string' && raw.whatsappUrl.trim()
-      ? raw.whatsappUrl.trim()
-      : DEFAULT_SITE_SETTINGS.whatsappUrl;
-  if (whatsappUrl.includes('975240401')) {
-    whatsappUrl = DEFAULT_SITE_SETTINGS.whatsappUrl;
+  const rawCopy = { ...raw } as Record<string, unknown>;
+  if ('whatsappUrl' in rawCopy) {
+    delete rawCopy.whatsappUrl;
     wasModified = true;
   }
 
   const settings: SiteSettings = stripUndefinedDeep({
     ...DEFAULT_SITE_SETTINGS,
-    ...raw,
+    ...(rawCopy as Partial<SiteSettings>),
     addressCity,
     addressBazaar,
     addressDetails,
@@ -665,7 +683,6 @@ export function sanitizeSiteSettings(raw: Partial<SiteSettings> | undefined | nu
     telegramUsername,
     telegramChannel,
     instagramUrl,
-    whatsappUrl,
   });
 
   return {
@@ -784,7 +801,7 @@ async function syncProductsCollectionToFirestore(
     const deletedSet = new Set(deletedIds);
     for (const delId of deletedSet) {
       if (delId) {
-        if (db) {
+        if (db && !isFirestoreQuotaExceeded) {
           deleteDoc(doc(db, PRODUCTS_COLLECTION, delId)).catch(() => {});
         }
         restDeleteProductDoc(delId).catch(() => {});
@@ -801,7 +818,7 @@ async function syncProductsCollectionToFirestore(
         updatedAt: now,
       });
       await Promise.all([
-        db
+        db && !isFirestoreQuotaExceeded
           ? setDoc(doc(db, PRODUCTS_COLLECTION, prod.id), docData).catch((err) => {
               handleFirestoreError(
                 err,
@@ -913,7 +930,7 @@ export async function pushRealtimeState(partial: RavonSyncPayload): Promise<void
         : stripUndefinedDeep({ ...payload, products: [] });
 
     await Promise.all([
-      db
+      db && !isFirestoreQuotaExceeded
         ? setDoc(doc(db, 'ravon_sync', 'main'), mainDocPayload, { merge: true }).catch((err) => {
             handleFirestoreError(err, OperationType.WRITE, SYNC_DOC_PATH);
           })
@@ -970,12 +987,18 @@ export async function pullRealtimeState(): Promise<RavonSyncPayload | null> {
   let restCollectionProducts: Product[] | null = null;
   let backendData: RavonSyncPayload | null = null;
 
-  // 1. Pull from Cloud Firestore SDK (`/ravon_sync/main` and `/ravon_products`)
-  if (db) {
+  // 1. Pull from Cloud Firestore SDK (`/ravon_sync/main` and `/ravon_products`) if quota is not exceeded
+  if (db && !isFirestoreQuotaExceeded) {
     try {
       const [mainSnap, productsSnap] = await Promise.all([
-        getDoc(doc(db, 'ravon_sync', 'main')).catch(() => null),
-        getDocs(collection(db, PRODUCTS_COLLECTION)).catch(() => null),
+        getDoc(doc(db, 'ravon_sync', 'main')).catch((err) => {
+          handleFirestoreError(err, OperationType.GET, SYNC_DOC_PATH);
+          return null;
+        }),
+        getDocs(collection(db, PRODUCTS_COLLECTION)).catch((err) => {
+          handleFirestoreError(err, OperationType.LIST, PRODUCTS_COLLECTION);
+          return null;
+        }),
       ]);
 
       if (mainSnap && mainSnap.exists()) {
@@ -1240,7 +1263,7 @@ export function subscribeToRealtimeSync(
   // 2. Cloud Firestore real-time listener on `/ravon_sync/main` (Authoritative for Settings, Categories, Orders, DeletedIds)
   let unsubscribeMainDoc: (() => void) | null = null;
 
-  if (db) {
+  if (db && !isFirestoreQuotaExceeded) {
     try {
       unsubscribeProductsCol = onSnapshot(
         collection(db, PRODUCTS_COLLECTION),
@@ -1260,6 +1283,12 @@ export function subscribeToRealtimeSync(
         },
         (error) => {
           handleFirestoreError(error, OperationType.LIST, PRODUCTS_COLLECTION);
+          if (unsubscribeProductsCol) {
+            try {
+              unsubscribeProductsCol();
+            } catch {}
+            unsubscribeProductsCol = null;
+          }
         }
       );
     } catch {
@@ -1295,6 +1324,12 @@ export function subscribeToRealtimeSync(
         },
         (error) => {
           handleFirestoreError(error, OperationType.GET, SYNC_DOC_PATH);
+          if (unsubscribeMainDoc) {
+            try {
+              unsubscribeMainDoc();
+            } catch {}
+            unsubscribeMainDoc = null;
+          }
         }
       );
     } catch {
@@ -1410,6 +1445,8 @@ export function subscribeToRealtimeSync(
         onUpdate({ carModels: JSON.parse(e.newValue), updatedAt: Date.now() });
       } else if (e.key === 'ravon_categories' && e.newValue) {
         onUpdate({ categories: JSON.parse(e.newValue), updatedAt: Date.now() });
+      } else if (e.key === 'ravon_brands' && e.newValue) {
+        onUpdate({ brands: JSON.parse(e.newValue), updatedAt: Date.now() });
       } else if (e.key === 'ravon_promocodes' && e.newValue) {
         onUpdate({ promoCodes: JSON.parse(e.newValue), updatedAt: Date.now() });
       } else if (e.key === 'ravon_product_reviews') {
@@ -1453,6 +1490,10 @@ export function subscribeToRealtimeSync(
     );
     const hasNewLocalCarModels = mergedCarModels.length > remoteCarModels.length;
 
+    const remoteBrands = Array.isArray(remote?.brands)
+      ? remote!.brands
+      : DEFAULT_BRANDS;
+
     hasCompletedInitialMigration = true;
 
     if (
@@ -1470,6 +1511,7 @@ export function subscribeToRealtimeSync(
         products: mergedProducts,
         categories: mergedCategories,
         carModels: mergedCarModels,
+        brands: remoteBrands,
         updatedAt: Date.now(),
       };
       applyIncoming(mergedPayload);
@@ -1477,6 +1519,7 @@ export function subscribeToRealtimeSync(
         products: mergedProducts,
         categories: mergedCategories,
         carModels: mergedCarModels,
+        brands: remoteBrands,
       }).catch(() => {});
     } else if (remote) {
       if (remote.products) {
@@ -1484,7 +1527,7 @@ export function subscribeToRealtimeSync(
       }
       applyIncoming(remote);
       // Also ensure any products that existed in main doc / backend are written to `/ravon_products` collection
-      if (remoteProducts.length > 0 && db) {
+      if (remoteProducts.length > 0 && db && !isFirestoreQuotaExceeded) {
         syncProductsCollectionToFirestore(remoteProducts, Array.from(deletedSet)).catch(
           () => {}
         );
@@ -1492,7 +1535,7 @@ export function subscribeToRealtimeSync(
     }
   });
 
-  // 6. Periodic background poll every 5 seconds for guaranteed sync across all networks
+  // 6. Periodic background poll every 20 seconds (lightweight RTDB + Backend sync)
   const intervalId = window.setInterval(async () => {
     const remote = await pullRealtimeState();
     if (remote) {
@@ -1501,7 +1544,7 @@ export function subscribeToRealtimeSync(
       }
       applyIncoming(remote);
     }
-  }, 5000);
+  }, 20000);
 
   return () => {
     if (unsubscribeMainDoc) unsubscribeMainDoc();
