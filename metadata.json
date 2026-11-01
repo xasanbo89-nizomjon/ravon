@@ -1,0 +1,8 @@
+{
+  "name": "Remix Ravon Auto Tuning - Avto ehtiyot qismlari va tyuning",
+  "description": "O\u0027zbekistondagi avtomobillar (Gentra, Cobalt, Nexia 3, Spark va boshqalar) uchun tyuning va ehtiyot qismlar do\u0027koni. AI rasm orqali zapchast qidiruv tizimi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
